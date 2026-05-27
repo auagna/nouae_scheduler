@@ -5,12 +5,13 @@ struct ProjectsView: View {
     @ObservedObject var projectStore: ProjectStore
 
     @State private var selectedCategory: ScheduleCategory?
+    @State private var selectedStatus: ProjectStatus?
     @State private var calendarSources: [CalendarSource] = []
     @State private var isShowingAddProject = false
     @State private var message: String?
 
     private var filteredProjects: [Project] {
-        projectStore.projects(for: selectedCategory)
+        projectStore.projects(for: selectedCategory, status: selectedStatus)
     }
 
     private var calendarTitleById: [String: String] {
@@ -20,8 +21,11 @@ struct ProjectsView: View {
     var body: some View {
         List {
             Section {
-                categoryFilter
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                VStack(alignment: .leading, spacing: 10) {
+                    filterRow(title: "상태", allTitle: "전체", items: ProjectStatus.allCases.filter { $0 != .archived }, selected: $selectedStatus)
+                    categoryFilter
+                }
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
             }
 
             if let message {
@@ -38,17 +42,9 @@ struct ProjectsView: View {
                 } else {
                     ForEach(filteredProjects) { project in
                         NavigationLink {
-                            ProjectDetailView(
-                                project: project,
-                                calendarTitle: calendarTitle(for: project),
-                                projectStore: projectStore
-                            )
+                            ProjectDetailView(project: project, calendarTitle: calendarTitle(for: project), projectStore: projectStore)
                         } label: {
-                            ProjectCard(
-                                project: project,
-                                summary: projectStore.summary(for: project),
-                                calendarTitle: calendarTitle(for: project)
-                            )
+                            ProjectCard(project: project, summary: projectStore.summary(for: project), calendarTitle: calendarTitle(for: project))
                         }
                     }
                 }
@@ -57,53 +53,53 @@ struct ProjectsView: View {
         .navigationTitle("Projects")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    isShowingAddProject = true
-                } label: {
-                    Image(systemName: "plus")
-                }
+                Button { isShowingAddProject = true } label: { Image(systemName: "plus") }
             }
         }
         .sheet(isPresented: $isShowingAddProject) {
             NavigationStack {
-                AddProjectView(
-                    eventKitManager: eventKitManager,
-                    projectStore: projectStore,
-                    onSave: { Task { await loadCalendars() } }
-                )
+                AddProjectView(eventKitManager: eventKitManager, projectStore: projectStore, onSave: { Task { await loadCalendars() } })
             }
         }
-        .task {
-            await loadCalendars()
-        }
+        .task { await loadCalendars() }
     }
 
     private var categoryFilter: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                filterButton(title: "전체", category: nil)
+                filterButton(title: "전체", isSelected: selectedCategory == nil) { selectedCategory = nil }
                 ForEach(ScheduleCategory.allCases) { category in
-                    filterButton(title: category.rawValue, category: category)
+                    filterButton(title: category.rawValue, isSelected: selectedCategory == category) { selectedCategory = category }
                 }
             }
         }
     }
 
-    private func filterButton(title: String, category: ScheduleCategory?) -> some View {
-        Button {
-            selectedCategory = category
-        } label: {
+    private func filterRow(title: String, allTitle: String, items: [ProjectStatus], selected: Binding<ProjectStatus?>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    filterButton(title: allTitle, isSelected: selected.wrappedValue == nil) { selected.wrappedValue = nil }
+                    ForEach(items) { status in
+                        filterButton(title: status.rawValue, isSelected: selected.wrappedValue == status) { selected.wrappedValue = status }
+                    }
+                }
+            }
+        }
+    }
+
+    private func filterButton(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             Text(title)
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
-                .background(isSelected(category) ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.10), in: Capsule())
+                .background(isSelected ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.10), in: Capsule())
         }
         .buttonStyle(.plain)
-    }
-
-    private func isSelected(_ category: ScheduleCategory?) -> Bool {
-        selectedCategory == category
     }
 
     private func calendarTitle(for project: Project) -> String? {
