@@ -69,6 +69,39 @@ final class CalendarSelectionStore: ObservableObject {
         categoryCalendarIds[category]
     }
 
+    func calendarId(for category: ScheduleCategory, in sources: [CalendarSource]) -> String? {
+        if let explicitId = categoryCalendarIds[category] {
+            return explicitId
+        }
+        return inferredCalendarId(for: category, in: sources)
+    }
+
+    func calendarTitle(for category: ScheduleCategory, in sources: [CalendarSource]) -> String? {
+        guard let id = calendarId(for: category, in: sources) else { return nil }
+        return sources.first { $0.id == id }?.title
+    }
+
+    private func inferredCalendarId(for category: ScheduleCategory, in sources: [CalendarSource]) -> String? {
+        let candidates: [String]
+        switch category {
+        case .work:
+            candidates = ["작업", "work"]
+        case .company:
+            candidates = ["회사", "company"]
+        case .personal:
+            candidates = ["개인", "personal"]
+        case .social:
+            candidates = ["SOCIAL", "소셜", "social"]
+        }
+
+        for candidate in candidates {
+            if let source = sources.first(where: { $0.title.caseInsensitiveCompare(candidate) == .orderedSame }) {
+                return source.id
+            }
+        }
+        return nil
+    }
+
     private func saveSelectedCalendarIds() {
         defaults.set(Array(selectedCalendarIds), forKey: selectedDefaultsKey)
     }
