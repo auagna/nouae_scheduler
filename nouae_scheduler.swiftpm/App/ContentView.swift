@@ -20,7 +20,7 @@ struct ContentView: View {
             }
 
             NavigationStack {
-                CalendarView()
+                CalendarView(eventKitManager: eventKitManager)
             }
             .tabItem {
                 Label("Calendar", systemImage: "calendar")
