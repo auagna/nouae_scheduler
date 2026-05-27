@@ -2,8 +2,8 @@ import SwiftUI
 
 struct CalendarView: View {
     @ObservedObject var eventKitManager: EventKitManager
+    @ObservedObject var selectionStore: CalendarSelectionStore
 
-    @StateObject private var selectionStore = CalendarSelectionStore()
     @State private var selectedDate = Date()
     @State private var sources: [CalendarSource] = []
     @State private var events: [CalendarEvent] = []
@@ -39,10 +39,7 @@ struct CalendarView: View {
                 ProgressView("일정 불러오는 중...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if events.isEmpty && errorMessage == nil {
-                ContentUnavailableView(
-                    "선택한 캘린더에 일정이 없습니다.",
-                    systemImage: "calendar.badge.exclamationmark"
-                )
+                ContentUnavailableView("선택한 캘린더에 일정이 없습니다.", systemImage: "calendar.badge.exclamationmark")
             } else {
                 List(events) { event in
                     CalendarEventRow(event: event)
@@ -53,12 +50,8 @@ struct CalendarView: View {
         .navigationTitle("Calendar")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    isShowingFilter = true
-                } label: {
-                    Image(systemName: "line.3.horizontal.decrease.circle")
-                }
-                .disabled(sources.isEmpty)
+                Button { isShowingFilter = true } label: { Image(systemName: "line.3.horizontal.decrease.circle") }
+                    .disabled(sources.isEmpty)
             }
         }
         .sheet(isPresented: $isShowingFilter) {
@@ -66,43 +59,26 @@ struct CalendarView: View {
                 CalendarFilterSheet(
                     sources: $sources,
                     selectionStore: selectionStore,
-                    onSelectionChanged: {
-                        Task { await loadEventsForSelectedDate() }
-                    }
+                    onSelectionChanged: { Task { await loadEventsForSelectedDate() } }
                 )
             }
         }
-        .task {
-            await loadCalendarsAndEvents()
-        }
+        .task { await loadCalendarsAndEvents() }
     }
 
     private var dateHeader: some View {
         HStack(spacing: 12) {
-            Button {
-                moveDate(by: -1)
-            } label: {
-                Image(systemName: "chevron.left")
-                    .frame(width: 34, height: 34)
-            }
-            .buttonStyle(.bordered)
+            Button { moveDate(by: -1) } label: { Image(systemName: "chevron.left").frame(width: 34, height: 34) }
+                .buttonStyle(.bordered)
 
             VStack(spacing: 2) {
-                Text(dateTitle(selectedDate))
-                    .font(.headline)
-                Text(weekdayTitle(selectedDate))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(dateTitle(selectedDate)).font(.headline)
+                Text(weekdayTitle(selectedDate)).font(.caption).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity)
 
-            Button {
-                moveDate(by: 1)
-            } label: {
-                Image(systemName: "chevron.right")
-                    .frame(width: 34, height: 34)
-            }
-            .buttonStyle(.bordered)
+            Button { moveDate(by: 1) } label: { Image(systemName: "chevron.right").frame(width: 34, height: 34) }
+                .buttonStyle(.bordered)
         }
     }
 
