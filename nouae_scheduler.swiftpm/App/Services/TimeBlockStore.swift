@@ -5,28 +5,42 @@ final class TimeBlockStore: ObservableObject {
     @Published private(set) var blocks: [TimeBlock] = []
     @Published var message: String?
 
+    private static let defaultsKey = "nouae.timeBlocks"
     private let eventKitManager: EventKitManager
     private var syncTasks: [UUID: Task<Void, Never>] = [:]
     private let snapMinutes = 15
 
     init(eventKitManager: EventKitManager) {
         self.eventKitManager = eventKitManager
+        blocks = Self.loadPersistedBlocks().filter { Calendar.current.isDateInToday($0.startAt) }
     }
 
     deinit {
         syncTasks.values.forEach { $0.cancel() }
     }
 
+    static func loadPersistedBlocks() -> [TimeBlock] {
+        guard let data = UserDefaults.standard.data(forKey: defaultsKey) else { return [] }
+        return (try? JSONDecoder().decode([TimeBlock].self, from: data)) ?? []
+    }
+
     func loadToday() async {
+        let persistedToday = Self.loadPersistedBlocks().filter { Calendar.current.isDateInToday($0.startAt) }
+        if !persistedToday.isEmpty {
+            blocks = persistedToday.sorted { $0.startAt < $1.startAt }
+            return
+        }
+
         do {
             blocks = try await eventKitManager.fetchTodayTimeBlocks()
+            persistBlocks()
             message = nil
         } catch {
             message = error.localizedDescription
         }
     }
 
-    func createBlock(title: String, category: ScheduleCategory, startAt: Date, endAt: Date) {
+    func createBlock(title: String, category: ScheduleCategory, project: Project?, startAt: Date, endAt: Date) {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty else {
             message = "일정 제목을 입력해 주세요."
@@ -37,13 +51,17 @@ final class TimeBlockStore: ObservableObject {
         let normalizedEnd = max(snapped(endAt), Calendar.current.date(byAdding: .minute, value: 30, to: normalizedStart) ?? endAt)
         let block = TimeBlock(
             title: cleanTitle,
-            category: category,
+            category: project?.category ?? category,
             startAt: normalizedStart,
             endAt: normalizedEnd,
-            syncStatus: .pending
+            calendarIdentifier: project?.calendarIdentifier,
+            syncStatus: .pending,
+            projectId: project?.id,
+            projectTitle: project?.title
         )
         blocks.append(block)
         sortBlocks()
+        persistBlocks()
         scheduleSync(for: block.id)
     }
 
@@ -80,6 +98,7 @@ final class TimeBlockStore: ObservableObject {
         mutate(&blocks[index])
         blocks[index].syncStatus = .pending
         sortBlocks()
+        persistBlocks()
         scheduleSync(for: id)
     }
 
@@ -95,6 +114,7 @@ final class TimeBlockStore: ObservableObject {
     private func sync(id: UUID) async {
         guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
         blocks[index].syncStatus = .syncing
+        persistBlocks()
         let block = blocks[index]
 
         do {
@@ -102,11 +122,13 @@ final class TimeBlockStore: ObservableObject {
             if let savedIndex = blocks.firstIndex(where: { $0.id == id }) {
                 blocks[savedIndex] = savedBlock
                 sortBlocks()
+                persistBlocks()
             }
             message = nil
         } catch {
             if let failedIndex = blocks.firstIndex(where: { $0.id == id }) {
                 blocks[failedIndex].syncStatus = .failed
+                persistBlocks()
             }
             message = error.localizedDescription
         }
@@ -114,6 +136,16 @@ final class TimeBlockStore: ObservableObject {
 
     private func sortBlocks() {
         blocks.sort { $0.startAt < $1.startAt }
+    }
+
+    private func persistBlocks() {
+        var allBlocks = Self.loadPersistedBlocks()
+        let currentIds = Set(blocks.map(\.id))
+        allBlocks.removeAll { currentIds.contains($0.id) || Calendar.current.isDateInToday($0.startAt) }
+        allBlocks.append(contentsOf: blocks)
+        if let data = try? JSONEncoder().encode(allBlocks) {
+            UserDefaults.standard.set(data, forKey: Self.defaultsKey)
+        }
     }
 
     private func snapped(_ date: Date) -> Date {
