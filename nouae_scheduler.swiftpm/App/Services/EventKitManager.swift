@@ -9,9 +9,7 @@ final class EventKitManager: ObservableObject {
 
     private let eventStore = EKEventStore()
 
-    init() {
-        refreshAuthorizationStatus()
-    }
+    init() { refreshAuthorizationStatus() }
 
     func refreshAuthorizationStatus() {
         calendarStatusText = statusText(for: EKEventStore.authorizationStatus(for: .event))
@@ -32,26 +30,20 @@ final class EventKitManager: ObservableObject {
     func requestCalendarAccess() async throws {
         let granted = try await eventStore.requestFullAccessToEvents()
         refreshAuthorizationStatus()
-        if !granted {
-            throw EventKitManagerError.accessDenied("캘린더 접근 권한이 필요합니다. iPad 설정 앱에서 권한을 허용해 주세요.")
-        }
+        if !granted { throw EventKitManagerError.accessDenied("캘린더 접근 권한이 필요합니다. iPad 설정 앱에서 권한을 허용해 주세요.") }
     }
 
     func requestRemindersAccess() async throws {
         let granted = try await eventStore.requestFullAccessToReminders()
         refreshAuthorizationStatus()
-        if !granted {
-            throw EventKitManagerError.accessDenied("미리알림 접근 권한이 필요합니다. iPad 설정 앱에서 권한을 허용해 주세요.")
-        }
+        if !granted { throw EventKitManagerError.accessDenied("미리알림 접근 권한이 필요합니다. iPad 설정 앱에서 권한을 허용해 주세요.") }
     }
 
     func fetchCalendars() async throws -> [CalendarSource] {
         try await requestCalendarAccessIfNeeded()
         return eventStore.calendars(for: .event)
             .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-            .map { calendar in
-                CalendarSource(id: calendar.calendarIdentifier, title: calendar.title, colorHex: hexString(from: calendar.cgColor), isSelected: true)
-            }
+            .map { CalendarSource(id: $0.calendarIdentifier, title: $0.title, colorHex: hexString(from: $0.cgColor), isSelected: true) }
     }
 
     func createCalendar(title: String, category: ScheduleCategory) async throws -> CalendarSource? {
@@ -116,30 +108,28 @@ final class EventKitManager: ObservableObject {
 
     func createReminder(title: String, dueDate: Date, category: ScheduleCategory) async throws {
         try ensureReminderAccess()
-        guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw EventKitManagerError.validation("할 일 제목을 입력해 주세요.")
-        }
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTitle.isEmpty else { throw EventKitManagerError.validation("할 일 제목을 입력해 주세요.") }
         guard let calendar = eventStore.defaultCalendarForNewReminders() else {
             throw EventKitManagerError.unavailable("기본 미리알림 목록을 찾을 수 없습니다.")
         }
         let reminder = EKReminder(eventStore: eventStore)
-        reminder.title = "[\(category.rawValue)] \(title)"
+        reminder.title = cleanTitle
         reminder.calendar = calendar
         reminder.dueDateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: dueDate)
-        do {
-            try eventStore.save(reminder, commit: true)
-        } catch {
+        do { try eventStore.save(reminder, commit: true) } catch {
             throw EventKitManagerError.saveFailed("미리알림 저장에 실패했습니다: \(error.localizedDescription)")
         }
     }
 
     func saveTimeBlock(_ block: TimeBlock) async throws -> TimeBlock {
         try ensureCalendarAccess()
-        guard !block.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw EventKitManagerError.validation("일정 제목을 입력해 주세요.")
-        }
-        guard block.endAt > block.startAt else {
-            throw EventKitManagerError.validation("종료 시간은 시작 시간보다 늦어야 합니다.")
+        let cleanTitle = block.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTitle.isEmpty else { throw EventKitManagerError.validation("일정 제목을 입력해 주세요.") }
+        guard block.endAt > block.startAt else { throw EventKitManagerError.validation("종료 시간은 시작 시간보다 늦어야 합니다.") }
+        guard let calendarIdentifier = block.calendarIdentifier,
+              let targetCalendar = eventStore.calendar(withIdentifier: calendarIdentifier) else {
+            throw EventKitManagerError.validation("\(block.category.rawValue) 카테고리에 연결된 Apple Calendar가 없습니다.")
         }
 
         let event: EKEvent
@@ -150,17 +140,8 @@ final class EventKitManager: ObservableObject {
             event = EKEvent(eventStore: eventStore)
         }
 
-        if let calendarIdentifier = block.calendarIdentifier,
-           let projectCalendar = eventStore.calendar(withIdentifier: calendarIdentifier) {
-            event.calendar = projectCalendar
-        } else if event.calendar == nil {
-            guard let calendar = eventStore.defaultCalendarForNewEvents else {
-                throw EventKitManagerError.unavailable("기본 캘린더를 찾을 수 없습니다.")
-            }
-            event.calendar = calendar
-        }
-
-        event.title = "[\(block.category.rawValue)] \(block.title)"
+        event.calendar = targetCalendar
+        event.title = cleanTitle
         event.startDate = block.startAt
         event.endDate = block.endAt
         event.notes = eventNotes(for: block)
@@ -189,8 +170,8 @@ final class EventKitManager: ObservableObject {
         return fetchEKEvents(from: dayStart, days: 1).map { event in
             let metadata = metadata(from: event.notes)
             return TimeBlock(
-                title: cleanTitle(event.title),
-                category: category(from: event.title),
+                title: event.title,
+                category: metadata.category ?? .work,
                 startAt: event.startDate,
                 endAt: event.endDate,
                 calendarIdentifier: event.calendar.calendarIdentifier,
@@ -229,24 +210,18 @@ final class EventKitManager: ObservableObject {
 
     private func fetchReminders(matching predicate: NSPredicate) async -> [EKReminder] {
         await withCheckedContinuation { continuation in
-            eventStore.fetchReminders(matching: predicate) { reminders in
-                continuation.resume(returning: reminders ?? [])
-            }
+            eventStore.fetchReminders(matching: predicate) { reminders in continuation.resume(returning: reminders ?? []) }
         }
     }
 
     private func ensureCalendarAccess() throws {
         let status = EKEventStore.authorizationStatus(for: .event)
-        if !isGranted(status) {
-            throw EventKitManagerError.accessDenied("캘린더 권한이 없습니다. Settings 탭에서 권한을 요청해 주세요.")
-        }
+        if !isGranted(status) { throw EventKitManagerError.accessDenied("캘린더 권한이 없습니다. Settings 탭에서 권한을 요청해 주세요.") }
     }
 
     private func ensureReminderAccess() throws {
         let status = EKEventStore.authorizationStatus(for: .reminder)
-        if !isGranted(status) {
-            throw EventKitManagerError.accessDenied("미리알림 권한이 없습니다. Settings 탭에서 권한을 요청해 주세요.")
-        }
+        if !isGranted(status) { throw EventKitManagerError.accessDenied("미리알림 권한이 없습니다. Settings 탭에서 권한을 요청해 주세요.") }
     }
 
     private func isGranted(_ status: EKAuthorizationStatus) -> Bool {
@@ -269,19 +244,6 @@ final class EventKitManager: ObservableObject {
         }
     }
 
-    private func category(from title: String) -> ScheduleCategory {
-        for category in ScheduleCategory.allCases where title.hasPrefix("[\(category.rawValue)]") { return category }
-        return .work
-    }
-
-    private func cleanTitle(_ title: String) -> String {
-        for category in ScheduleCategory.allCases {
-            let prefix = "[\(category.rawValue)] "
-            if title.hasPrefix(prefix) { return String(title.dropFirst(prefix.count)) }
-        }
-        return title
-    }
-
     private func eventNotes(for block: TimeBlock) -> String {
         var lines = ["nouae category: \(block.category.rawValue)"]
         if let projectId = block.projectId { lines.append("nouae projectId: \(projectId.uuidString)") }
@@ -289,18 +251,21 @@ final class EventKitManager: ObservableObject {
         return lines.joined(separator: "\n")
     }
 
-    private func metadata(from notes: String?) -> (projectId: UUID?, projectTitle: String?) {
-        guard let notes else { return (nil, nil) }
+    private func metadata(from notes: String?) -> (category: ScheduleCategory?, projectId: UUID?, projectTitle: String?) {
+        guard let notes else { return (nil, nil, nil) }
+        var category: ScheduleCategory?
         var projectId: UUID?
         var projectTitle: String?
         for line in notes.components(separatedBy: .newlines) {
-            if line.hasPrefix("nouae projectId: ") {
+            if line.hasPrefix("nouae category: ") {
+                category = ScheduleCategory(rawValue: String(line.dropFirst("nouae category: ".count)))
+            } else if line.hasPrefix("nouae projectId: ") {
                 projectId = UUID(uuidString: String(line.dropFirst("nouae projectId: ".count)))
             } else if line.hasPrefix("nouae projectTitle: ") {
                 projectTitle = String(line.dropFirst("nouae projectTitle: ".count))
             }
         }
-        return (projectId, projectTitle)
+        return (category, projectId, projectTitle)
     }
 
     private func hexString(from cgColor: CGColor) -> String? {
