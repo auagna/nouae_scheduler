@@ -48,7 +48,12 @@ final class ProjectStore: ObservableObject {
 
     func updateProject(_ project: Project, title: String, category: ScheduleCategory, note: String?, calendarIdentifier: String?) {
         guard let index = projects.firstIndex(where: { $0.id == project.id }) else { return }
-        projects[index].title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTitle.isEmpty else {
+            message = "프로젝트 이름을 입력해 주세요."
+            return
+        }
+        projects[index].title = cleanTitle
         projects[index].category = category
         projects[index].note = note?.trimmingCharacters(in: .whitespacesAndNewlines)
         projects[index].calendarIdentifier = calendarIdentifier
@@ -63,11 +68,10 @@ final class ProjectStore: ObservableObject {
         save()
     }
 
-    func summary(for project: Project, blocks: [TimeBlock] = TimeBlockStore.loadPersistedBlocks()) -> ProjectDashboardSummary {
-        let projectBlocks = blocks.filter { $0.projectId == project.id }
+    func summary(for project: Project) -> ProjectDashboardSummary {
+        let projectBlocks = TimeBlockStore.loadPersistedBlocks().filter { $0.projectId == project.id }
         let calendar = Calendar.current
         let now = Date()
-        let todayStart = calendar.startOfDay(for: now)
         let weekInterval = calendar.dateInterval(of: .weekOfYear, for: now)
 
         let totalMinutes = projectBlocks.reduce(0) { $0 + $1.durationMinutes }
