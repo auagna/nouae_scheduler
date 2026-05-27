@@ -2,19 +2,21 @@ import SwiftUI
 
 struct TimeView: View {
     @ObservedObject var eventKitManager: EventKitManager
+    @ObservedObject var projectStore: ProjectStore
     @StateObject private var store: TimeBlockStore
 
     private let pointsPerHour: CGFloat = 72
     private let timelineWidthPadding: CGFloat = 58
 
-    init(eventKitManager: EventKitManager) {
+    init(eventKitManager: EventKitManager, projectStore: ProjectStore) {
         self.eventKitManager = eventKitManager
+        self.projectStore = projectStore
         _store = StateObject(wrappedValue: TimeBlockStore(eventKitManager: eventKitManager))
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            QuickInputPanel(store: store, eventKitManager: eventKitManager)
+            QuickInputPanel(store: store, eventKitManager: eventKitManager, projectStore: projectStore)
                 .padding(.vertical, 8)
 
             if let message = store.message {
