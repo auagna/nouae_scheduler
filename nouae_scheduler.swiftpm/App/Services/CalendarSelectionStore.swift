@@ -3,16 +3,19 @@ import Foundation
 @MainActor
 final class CalendarSelectionStore: ObservableObject {
     @Published private(set) var selectedCalendarIds: Set<String> = []
+    @Published private(set) var categoryCalendarIds: [ScheduleCategory: String] = [:]
 
-    private let defaultsKey = "selectedCalendarIds"
+    private let selectedDefaultsKey = "selectedCalendarIds"
+    private let categoryMappingDefaultsKey = "categoryCalendarIds"
     private let defaults = UserDefaults.standard
 
     init() {
-        selectedCalendarIds = Set(defaults.stringArray(forKey: defaultsKey) ?? [])
+        selectedCalendarIds = Set(defaults.stringArray(forKey: selectedDefaultsKey) ?? [])
+        categoryCalendarIds = loadCategoryMappings()
     }
 
     var hasSavedSelection: Bool {
-        defaults.object(forKey: defaultsKey) != nil
+        defaults.object(forKey: selectedDefaultsKey) != nil
     }
 
     func applySelection(to sources: [CalendarSource]) -> [CalendarSource] {
@@ -37,17 +40,17 @@ final class CalendarSelectionStore: ObservableObject {
         } else {
             selectedCalendarIds.remove(sourceId)
         }
-        save()
+        saveSelectedCalendarIds()
     }
 
     func selectAll(_ sources: [CalendarSource]) {
         selectedCalendarIds = Set(sources.map(\.id))
-        save()
+        saveSelectedCalendarIds()
     }
 
     func deselectAll() {
         selectedCalendarIds = []
-        save()
+        saveSelectedCalendarIds()
     }
 
     func selectedIds(from sources: [CalendarSource]) -> [String] {
@@ -57,7 +60,37 @@ final class CalendarSelectionStore: ObservableObject {
         return sources.filter(\.isSelected).map(\.id)
     }
 
-    private func save() {
-        defaults.set(Array(selectedCalendarIds), forKey: defaultsKey)
+    func setCalendarSource(_ sourceId: String?, for category: ScheduleCategory) {
+        categoryCalendarIds[category] = sourceId
+        saveCategoryMappings()
+    }
+
+    func calendarId(for category: ScheduleCategory) -> String? {
+        categoryCalendarIds[category]
+    }
+
+    private func saveSelectedCalendarIds() {
+        defaults.set(Array(selectedCalendarIds), forKey: selectedDefaultsKey)
+    }
+
+    private func loadCategoryMappings() -> [ScheduleCategory: String] {
+        guard let stored = defaults.dictionary(forKey: categoryMappingDefaultsKey) as? [String: String] else {
+            return [:]
+        }
+
+        var mappings: [ScheduleCategory: String] = [:]
+        for (rawCategory, calendarId) in stored {
+            if let category = ScheduleCategory(rawValue: rawCategory) {
+                mappings[category] = calendarId
+            }
+        }
+        return mappings
+    }
+
+    private func saveCategoryMappings() {
+        let stored = Dictionary(uniqueKeysWithValues: categoryCalendarIds.map { category, calendarId in
+            (category.rawValue, calendarId)
+        })
+        defaults.set(stored, forKey: categoryMappingDefaultsKey)
     }
 }
