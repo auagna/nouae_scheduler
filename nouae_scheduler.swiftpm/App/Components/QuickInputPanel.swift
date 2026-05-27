@@ -3,12 +3,22 @@ import SwiftUI
 struct QuickInputPanel: View {
     @ObservedObject var store: TimeBlockStore
     @ObservedObject var eventKitManager: EventKitManager
+    @ObservedObject var projectStore: ProjectStore
 
     @State private var title = ""
     @State private var category: ScheduleCategory = .work
+    @State private var selectedProjectId: UUID?
     @State private var startAt = Date()
     @State private var endAt = Calendar.current.date(byAdding: .minute, value: 30, to: Date()) ?? Date()
     @State private var isShowingReminderSheet = false
+
+    private var categoryProjects: [Project] {
+        projectStore.projects(for: category)
+    }
+
+    private var selectedProject: Project? {
+        projectStore.project(id: selectedProjectId)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -34,6 +44,11 @@ struct QuickInputPanel: View {
             }
 
             CategoryPicker(selectedCategory: $category)
+                .onChange(of: category) { _ in
+                    selectedProjectId = nil
+                }
+
+            ProjectPicker(projects: categoryProjects, selectedProjectId: $selectedProjectId)
 
             HStack {
                 DatePicker("시작", selection: $startAt, displayedComponents: [.hourAndMinute])
@@ -52,7 +67,7 @@ struct QuickInputPanel: View {
     }
 
     private func addTimeBlock() {
-        store.createBlock(title: title, category: category, startAt: startAt, endAt: endAt)
+        store.createBlock(title: title, category: category, project: selectedProject, startAt: startAt, endAt: endAt)
         title = ""
         let nextStart = Calendar.current.date(byAdding: .minute, value: 30, to: startAt) ?? Date()
         startAt = nextStart
