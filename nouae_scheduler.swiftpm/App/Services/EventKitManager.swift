@@ -1,5 +1,6 @@
 import EventKit
 import Foundation
+import UIKit
 
 @MainActor
 final class EventKitManager: ObservableObject {
@@ -15,6 +16,21 @@ final class EventKitManager: ObservableObject {
     func refreshAuthorizationStatus() {
         calendarStatusText = statusText(for: EKEventStore.authorizationStatus(for: .event))
         remindersStatusText = statusText(for: EKEventStore.authorizationStatus(for: .reminder))
+    }
+
+    func requestCalendarAccessIfNeeded() async throws {
+        let status = EKEventStore.authorizationStatus(for: .event)
+        if isGranted(status) {
+            return
+        }
+
+        if status == .notDetermined {
+            try await requestCalendarAccess()
+            return
+        }
+
+        refreshAuthorizationStatus()
+        throw EventKitManagerError.accessDenied("캘린더 권한이 없습니다. Settings에서 권한을 허용해 주세요.")
     }
 
     func requestCalendarAccess() async throws {
@@ -33,6 +49,50 @@ final class EventKitManager: ObservableObject {
         if !granted {
             throw EventKitManagerError.accessDenied("미리알림 접근 권한이 필요합니다. iPad 설정 앱에서 권한을 허용해 주세요.")
         }
+    }
+
+    func fetchCalendars() async throws -> [CalendarSource] {
+        try await requestCalendarAccessIfNeeded()
+
+        return eventStore.calendars(for: .event)
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            .map { calendar in
+                CalendarSource(
+                    id: calendar.calendarIdentifier,
+                    title: calendar.title,
+                    colorHex: hexString(from: calendar.cgColor),
+                    isSelected: true
+                )
+            }
+    }
+
+    func fetchEvents(from startDate: Date, to endDate: Date, calendarIds: [String]) async throws -> [CalendarEvent] {
+        try await requestCalendarAccessIfNeeded()
+
+        guard !calendarIds.isEmpty else {
+            return []
+        }
+
+        let calendars = eventStore.calendars(for: .event).filter { calendarIds.contains($0.calendarIdentifier) }
+        guard !calendars.isEmpty else {
+            return []
+        }
+
+        let predicate = eventStore.predicateForEvents(withStart: startDate, end: endDate, calendars: calendars)
+        return eventStore.events(matching: predicate)
+            .sorted { $0.startDate < $1.startDate }
+            .map { event in
+                CalendarEvent(
+                    id: event.eventIdentifier ?? event.calendarItemIdentifier,
+                    title: event.title,
+                    startAt: event.startDate,
+                    endAt: event.endDate,
+                    calendarId: event.calendar.calendarIdentifier,
+                    calendarTitle: event.calendar.title,
+                    colorHex: hexString(from: event.calendar.cgColor),
+                    notes: event.notes
+                )
+            }
     }
 
     func createReminder(title: String, dueDate: Date, category: ScheduleCategory) async throws {
@@ -101,13 +161,13 @@ final class EventKitManager: ObservableObject {
     func fetchTodaySchedules() async throws -> [EKEvent] {
         try ensureCalendarAccess()
         let dayStart = Calendar.current.startOfDay(for: Date())
-        return fetchEvents(from: dayStart, days: 1)
+        return fetchEKEvents(from: dayStart, days: 1)
     }
 
     func fetchTodayTimeBlocks() async throws -> [TimeBlock] {
         try ensureCalendarAccess()
         let dayStart = Calendar.current.startOfDay(for: Date())
-        return fetchEvents(from: dayStart, days: 1).map { event in
+        return fetchEKEvents(from: dayStart, days: 1).map { event in
             TimeBlock(
                 title: cleanTitle(event.title),
                 category: category(from: event.title),
@@ -143,7 +203,7 @@ final class EventKitManager: ObservableObject {
             }
     }
 
-    private func fetchEvents(from start: Date, days: Int) -> [EKEvent] {
+    private func fetchEKEvents(from start: Date, days: Int) -> [EKEvent] {
         guard let end = Calendar.current.date(byAdding: .day, value: days, to: start) else {
             return []
         }
@@ -218,6 +278,25 @@ final class EventKitManager: ObservableObject {
             }
         }
         return title
+    }
+
+    private func hexString(from cgColor: CGColor) -> String? {
+        let color = UIColor(cgColor: cgColor)
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+
+        guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+            return nil
+        }
+
+        return String(
+            format: "#%02X%02X%02X",
+            Int(red * 255),
+            Int(green * 255),
+            Int(blue * 255)
+        )
     }
 }
 
