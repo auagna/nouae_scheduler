@@ -32,8 +32,12 @@ struct CalendarFilterSheet: View {
                     Toggle(isOn: Binding(
                         get: { source.isSelected },
                         set: { isSelected in
+                            if !selectionStore.hasSavedSelection {
+                                selectionStore.selectAll(sources)
+                            }
                             source.isSelected = isSelected
                             selectionStore.setSelected(isSelected, for: source.id)
+                            updateSources()
                             onSelectionChanged()
                         }
                     )) {
