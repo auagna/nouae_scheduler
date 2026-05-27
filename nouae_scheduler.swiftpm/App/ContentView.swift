@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var eventKitManager = EventKitManager()
     @StateObject private var projectStore = ProjectStore()
+    @StateObject private var calendarSelectionStore = CalendarSelectionStore()
 
     var body: some View {
         TabView {
@@ -14,21 +15,29 @@ struct ContentView: View {
             }
 
             NavigationStack {
-                TimeView(eventKitManager: eventKitManager, projectStore: projectStore)
+                TimeView(
+                    eventKitManager: eventKitManager,
+                    projectStore: projectStore,
+                    calendarSelectionStore: calendarSelectionStore
+                )
             }
             .tabItem {
                 Label("Time", systemImage: "clock")
             }
 
             NavigationStack {
-                CalendarView(eventKitManager: eventKitManager)
+                CalendarView(eventKitManager: eventKitManager, selectionStore: calendarSelectionStore)
             }
             .tabItem {
                 Label("Calendar", systemImage: "calendar")
             }
 
             NavigationStack {
-                ProjectsView(eventKitManager: eventKitManager, projectStore: projectStore)
+                ProjectsView(
+                    eventKitManager: eventKitManager,
+                    projectStore: projectStore,
+                    calendarSelectionStore: calendarSelectionStore
+                )
             }
             .tabItem {
                 Label("Projects", systemImage: "folder")
