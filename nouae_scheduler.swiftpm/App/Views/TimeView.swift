@@ -3,15 +3,17 @@ import SwiftUI
 struct TimeView: View {
     @ObservedObject var eventKitManager: EventKitManager
     @ObservedObject var projectStore: ProjectStore
+    @ObservedObject var calendarSelectionStore: CalendarSelectionStore
     @StateObject private var store: TimeBlockStore
 
     private let pointsPerHour: CGFloat = 72
     private let timelineWidthPadding: CGFloat = 58
 
-    init(eventKitManager: EventKitManager, projectStore: ProjectStore) {
+    init(eventKitManager: EventKitManager, projectStore: ProjectStore, calendarSelectionStore: CalendarSelectionStore) {
         self.eventKitManager = eventKitManager
         self.projectStore = projectStore
-        _store = StateObject(wrappedValue: TimeBlockStore(eventKitManager: eventKitManager))
+        self.calendarSelectionStore = calendarSelectionStore
+        _store = StateObject(wrappedValue: TimeBlockStore(eventKitManager: eventKitManager, projectStore: projectStore, calendarSelectionStore: calendarSelectionStore))
     }
 
     var body: some View {
@@ -36,15 +38,9 @@ struct TimeView: View {
                         TimeBlockView(
                             block: block,
                             pointsPerHour: pointsPerHour,
-                            onMove: { minutes in
-                                store.moveBlock(id: block.id, byMinutes: minutes)
-                            },
-                            onResizeStart: { minutes in
-                                store.resizeBlockStart(id: block.id, byMinutes: minutes)
-                            },
-                            onResizeEnd: { minutes in
-                                store.resizeBlockEnd(id: block.id, byMinutes: minutes)
-                            }
+                            onMove: { minutes in store.moveBlock(id: block.id, byMinutes: minutes) },
+                            onResizeStart: { minutes in store.resizeBlockStart(id: block.id, byMinutes: minutes) },
+                            onResizeEnd: { minutes in store.resizeBlockEnd(id: block.id, byMinutes: minutes) }
                         )
                         .frame(height: blockHeight(for: block))
                         .padding(.trailing, 12)
@@ -57,15 +53,9 @@ struct TimeView: View {
         }
         .navigationTitle("Time")
         .toolbar {
-            Button {
-                Task { await store.loadToday() }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
+            Button { Task { await store.loadToday() } } label: { Image(systemName: "arrow.clockwise") }
         }
-        .task {
-            await store.loadToday()
-        }
+        .task { await store.loadToday() }
     }
 
     private func yOffset(for block: TimeBlock) -> CGFloat {
