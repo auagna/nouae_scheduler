@@ -7,17 +7,19 @@ final class TimeBlockStore: ObservableObject {
 
     private static let defaultsKey = "nouae.timeBlocks"
     private let eventKitManager: EventKitManager
+    private let projectStore: ProjectStore
+    private let calendarSelectionStore: CalendarSelectionStore
     private var syncTasks: [UUID: Task<Void, Never>] = [:]
     private let snapMinutes = 15
 
-    init(eventKitManager: EventKitManager) {
+    init(eventKitManager: EventKitManager, projectStore: ProjectStore, calendarSelectionStore: CalendarSelectionStore) {
         self.eventKitManager = eventKitManager
+        self.projectStore = projectStore
+        self.calendarSelectionStore = calendarSelectionStore
         blocks = Self.loadPersistedBlocks().filter { Calendar.current.isDateInToday($0.startAt) }
     }
 
-    deinit {
-        syncTasks.values.forEach { $0.cancel() }
-    }
+    deinit { syncTasks.values.forEach { $0.cancel() } }
 
     static func loadPersistedBlocks() -> [TimeBlock] {
         guard let data = UserDefaults.standard.data(forKey: defaultsKey) else { return [] }
@@ -35,9 +37,7 @@ final class TimeBlockStore: ObservableObject {
             blocks = try await eventKitManager.fetchTodayTimeBlocks()
             persistBlocks()
             message = nil
-        } catch {
-            message = error.localizedDescription
-        }
+        } catch { message = error.localizedDescription }
     }
 
     func createBlock(title: String, category: ScheduleCategory, project: Project?, startAt: Date, endAt: Date) {
@@ -47,14 +47,15 @@ final class TimeBlockStore: ObservableObject {
             return
         }
 
+        let resolvedCategory = project?.category ?? category
         let normalizedStart = snapped(startAt)
         let normalizedEnd = max(snapped(endAt), Calendar.current.date(byAdding: .minute, value: 30, to: normalizedStart) ?? endAt)
         let block = TimeBlock(
             title: cleanTitle,
-            category: project?.category ?? category,
+            category: resolvedCategory,
             startAt: normalizedStart,
             endAt: normalizedEnd,
-            calendarIdentifier: project?.calendarIdentifier,
+            calendarIdentifier: project?.calendarIdentifier ?? calendarSelectionStore.calendarId(for: resolvedCategory),
             syncStatus: .pending,
             projectId: project?.id,
             projectTitle: project?.title
@@ -115,10 +116,10 @@ final class TimeBlockStore: ObservableObject {
         guard let index = blocks.firstIndex(where: { $0.id == id }) else { return }
         blocks[index].syncStatus = .syncing
         persistBlocks()
-        let block = blocks[index]
 
         do {
-            let savedBlock = try await eventKitManager.saveTimeBlock(block)
+            let resolvedBlock = try await blockWithResolvedCalendar(blocks[index])
+            let savedBlock = try await eventKitManager.saveTimeBlock(resolvedBlock)
             if let savedIndex = blocks.firstIndex(where: { $0.id == id }) {
                 blocks[savedIndex] = savedBlock
                 sortBlocks()
@@ -134,9 +135,24 @@ final class TimeBlockStore: ObservableObject {
         }
     }
 
-    private func sortBlocks() {
-        blocks.sort { $0.startAt < $1.startAt }
+    private func blockWithResolvedCalendar(_ block: TimeBlock) async throws -> TimeBlock {
+        var resolved = block
+        if let project = projectStore.project(id: block.projectId), let calendarIdentifier = project.calendarIdentifier {
+            resolved.calendarIdentifier = calendarIdentifier
+            return resolved
+        }
+
+        let category = projectStore.project(id: block.projectId)?.category ?? block.category
+        let calendars = (try? await eventKitManager.fetchCalendars()) ?? []
+        if let mappedCalendarId = calendarSelectionStore.calendarId(for: category, in: calendars) {
+            resolved.calendarIdentifier = mappedCalendarId
+            return resolved
+        }
+
+        throw EventKitManagerError.validation("\(category.rawValue) 카테고리에 연결된 Apple Calendar가 없습니다. Calendar 탭 필터에서 카테고리 캘린더를 연결해 주세요.")
     }
+
+    private func sortBlocks() { blocks.sort { $0.startAt < $1.startAt } }
 
     private func persistBlocks() {
         var allBlocks = Self.loadPersistedBlocks()
@@ -170,7 +186,6 @@ final class TimeBlockStore: ObservableObject {
             block.startAt = dayStart
             block.endAt = block.startAt.addingTimeInterval(duration)
         }
-
         if block.endAt > dayEnd {
             block.endAt = dayEnd
             block.startAt = block.endAt.addingTimeInterval(-duration)
