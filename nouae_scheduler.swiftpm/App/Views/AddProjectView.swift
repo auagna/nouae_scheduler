@@ -123,7 +123,10 @@ struct AddProjectView: View {
                 calendarId = created?.id
             }
 
-            _ = projectStore.createProject(title: title, type: type, category: category, purpose: purpose, note: note, calendarIdentifier: calendarId)
+            guard projectStore.createProject(title: title, type: type, category: category, purpose: purpose, note: note, calendarIdentifier: calendarId) != nil else {
+                message = projectStore.message
+                return
+            }
             onSave()
             dismiss()
         } catch {
