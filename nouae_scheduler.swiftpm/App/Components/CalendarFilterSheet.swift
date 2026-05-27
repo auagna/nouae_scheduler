@@ -16,9 +16,7 @@ struct CalendarFilterSheet: View {
                         updateSources()
                         onSelectionChanged()
                     }
-
                     Spacer()
-
                     Button("전체 해제") {
                         selectionStore.deselectAll()
                         updateSources()
@@ -27,7 +25,21 @@ struct CalendarFilterSheet: View {
                 }
             }
 
-            Section("캘린더") {
+            Section("카테고리 캘린더 매핑") {
+                ForEach(ScheduleCategory.allCases) { category in
+                    Picker(category.rawValue, selection: Binding(
+                        get: { selectionStore.calendarId(for: category, in: sources) },
+                        set: { selectionStore.setCalendarSource($0, for: category) }
+                    )) {
+                        Text("연결 필요").tag(String?.none)
+                        ForEach(sources) { source in
+                            Text(source.title).tag(Optional(source.id))
+                        }
+                    }
+                }
+            }
+
+            Section("표시할 캘린더") {
                 ForEach($sources) { $source in
                     Toggle(isOn: Binding(
                         get: { source.isSelected },
@@ -54,9 +66,7 @@ struct CalendarFilterSheet: View {
         .navigationTitle("캘린더 선택")
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("완료") {
-                    dismiss()
-                }
+                Button("완료") { dismiss() }
             }
         }
     }
