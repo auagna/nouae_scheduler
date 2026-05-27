@@ -11,14 +11,11 @@ struct TimeBlockView: View {
     @State private var topHandleOffset: CGFloat = 0
     @State private var bottomHandleOffset: CGFloat = 0
 
-    private var pointsPerMinute: CGFloat {
-        pointsPerHour / 60
-    }
+    private var pointsPerMinute: CGFloat { pointsPerHour / 60 }
 
     var body: some View {
         VStack(spacing: 0) {
-            handle
-                .gesture(resizeStartGesture)
+            handle.gesture(resizeStartGesture)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -38,9 +35,19 @@ struct TimeBlockView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Text(block.category.rawValue)
-                    .font(.caption2)
-                    .foregroundStyle(block.category.color)
+                HStack(spacing: 6) {
+                    Text(block.category.rawValue)
+                        .font(.caption2)
+                        .foregroundStyle(block.category.color)
+
+                    if let projectTitle = block.projectTitle, !projectTitle.isEmpty {
+                        Text(projectTitle)
+                            .font(.caption2.weight(.medium))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(block.category.color.opacity(0.12), in: Capsule())
+                    }
+                }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -48,8 +55,7 @@ struct TimeBlockView: View {
             .contentShape(Rectangle())
             .gesture(moveGesture)
 
-            handle
-                .gesture(resizeEndGesture)
+            handle.gesture(resizeEndGesture)
         }
         .background(block.category.color.opacity(0.16), in: RoundedRectangle(cornerRadius: 8))
         .overlay(
@@ -70,58 +76,41 @@ struct TimeBlockView: View {
 
     private var moveGesture: some Gesture {
         DragGesture(minimumDistance: 4)
-            .onChanged { value in
-                moveOffset = value.translation.height
-            }
+            .onChanged { value in moveOffset = value.translation.height }
             .onEnded { value in
                 let minutes = snappedMinutes(from: value.translation.height)
                 moveOffset = 0
-                if minutes != 0 {
-                    onMove(minutes)
-                }
+                if minutes != 0 { onMove(minutes) }
             }
     }
 
     private var resizeStartGesture: some Gesture {
         DragGesture(minimumDistance: 4)
-            .onChanged { value in
-                topHandleOffset = value.translation.height
-            }
+            .onChanged { value in topHandleOffset = value.translation.height }
             .onEnded { value in
                 let minutes = snappedMinutes(from: value.translation.height)
                 topHandleOffset = 0
-                if minutes != 0 {
-                    onResizeStart(minutes)
-                }
+                if minutes != 0 { onResizeStart(minutes) }
             }
     }
 
     private var resizeEndGesture: some Gesture {
         DragGesture(minimumDistance: 4)
-            .onChanged { value in
-                bottomHandleOffset = value.translation.height
-            }
+            .onChanged { value in bottomHandleOffset = value.translation.height }
             .onEnded { value in
                 let minutes = snappedMinutes(from: value.translation.height)
                 bottomHandleOffset = 0
-                if minutes != 0 {
-                    onResizeEnd(minutes)
-                }
+                if minutes != 0 { onResizeEnd(minutes) }
             }
     }
 
     private var statusColor: Color {
         switch block.syncStatus {
-        case .local:
-            return .secondary
-        case .pending:
-            return .orange
-        case .syncing:
-            return .blue
-        case .synced:
-            return .green
-        case .failed:
-            return .red
+        case .local: return .secondary
+        case .pending: return .orange
+        case .syncing: return .blue
+        case .synced: return .green
+        case .failed: return .red
         }
     }
 
