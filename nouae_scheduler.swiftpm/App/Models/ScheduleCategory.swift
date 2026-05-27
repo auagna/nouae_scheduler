@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum ScheduleCategory: String, CaseIterable, Identifiable {
+enum ScheduleCategory: String, CaseIterable, Identifiable, Codable {
     case work = "작업"
     case company = "회사"
     case personal = "개인"
