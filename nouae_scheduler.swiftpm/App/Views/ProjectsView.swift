@@ -3,6 +3,7 @@ import SwiftUI
 struct ProjectsView: View {
     @ObservedObject var eventKitManager: EventKitManager
     @ObservedObject var projectStore: ProjectStore
+    @ObservedObject var calendarSelectionStore: CalendarSelectionStore
 
     @State private var selectedCategory: ScheduleCategory?
     @State private var selectedStatus: ProjectStatus?
@@ -29,16 +30,12 @@ struct ProjectsView: View {
             }
 
             if let message {
-                Section {
-                    Text(message)
-                        .foregroundStyle(.secondary)
-                }
+                Section { Text(message).foregroundStyle(.secondary) }
             }
 
             Section("프로젝트") {
                 if filteredProjects.isEmpty {
-                    Text("프로젝트가 없습니다.")
-                        .foregroundStyle(.secondary)
+                    Text("프로젝트가 없습니다.").foregroundStyle(.secondary)
                 } else {
                     ForEach(filteredProjects) { project in
                         NavigationLink {
@@ -58,7 +55,13 @@ struct ProjectsView: View {
         }
         .sheet(isPresented: $isShowingAddProject) {
             NavigationStack {
-                AddProjectView(eventKitManager: eventKitManager, projectStore: projectStore, onSave: { Task { await loadCalendars() } })
+                AddProjectView(
+                    eventKitManager: eventKitManager,
+                    projectStore: projectStore,
+                    calendarSelectionStore: calendarSelectionStore,
+                    calendarSources: calendarSources,
+                    onSave: { Task { await loadCalendars() } }
+                )
             }
         }
         .task { await loadCalendars() }
@@ -77,9 +80,7 @@ struct ProjectsView: View {
 
     private func filterRow(title: String, allTitle: String, items: [ProjectStatus], selected: Binding<ProjectStatus?>) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(title).font(.caption).foregroundStyle(.secondary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     filterButton(title: allTitle, isSelected: selected.wrappedValue == nil) { selected.wrappedValue = nil }
