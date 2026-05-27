@@ -16,7 +16,9 @@ struct AddProjectView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var title = ""
+    @State private var type: ProjectType = .work
     @State private var category: ScheduleCategory = .work
+    @State private var purpose = ""
     @State private var note = ""
     @State private var connectionMode: ProjectCalendarConnectionMode = .none
     @State private var calendarSources: [CalendarSource] = []
@@ -29,7 +31,14 @@ struct AddProjectView: View {
         Form {
             Section("프로젝트") {
                 TextField("프로젝트 이름", text: $title)
+                Picker("성격", selection: $type) {
+                    ForEach(ProjectType.allCases) { type in
+                        Text(type.rawValue).tag(type)
+                    }
+                }
                 CategoryPicker(selectedCategory: $category)
+                TextField("목적", text: $purpose, axis: .vertical)
+                    .lineLimit(2, reservesSpace: true)
                 TextField("메모", text: $note, axis: .vertical)
                     .lineLimit(3, reservesSpace: true)
             }
@@ -80,9 +89,7 @@ struct AddProjectView: View {
                 .disabled(isSaving)
             }
         }
-        .task {
-            await loadCalendarsIfNeeded()
-        }
+        .task { await loadCalendarsIfNeeded() }
         .onChange(of: connectionMode) { _ in
             Task { await loadCalendarsIfNeeded() }
         }
@@ -116,7 +123,7 @@ struct AddProjectView: View {
                 calendarId = created?.id
             }
 
-            projectStore.createProject(title: title, category: category, note: note, calendarIdentifier: calendarId)
+            _ = projectStore.createProject(title: title, type: type, category: category, purpose: purpose, note: note, calendarIdentifier: calendarId)
             onSave()
             dismiss()
         } catch {
