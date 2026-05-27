@@ -13,7 +13,7 @@ struct WorkBlock: Identifiable, Equatable, Codable {
     var eventIdentifier: String?
     var syncStatus: SyncStatus
 
-    init(id: UUID = UUID(), title: String, startAt: Date, endAt: Date, category: ScheduleCategory, projectId: UUID? = nil, projectTitle: String? = nil, rawTaskId: UUID? = nil, calendarIdentifier: String? = nil, eventIdentifier: String? = nil, syncStatus: SyncStatus = .local) {
+    init(id: UUID = UUID(), title: String, category: ScheduleCategory, startAt: Date, endAt: Date, calendarIdentifier: String? = nil, eventIdentifier: String? = nil, syncStatus: SyncStatus = .local, projectId: UUID? = nil, projectTitle: String? = nil, rawTaskId: UUID? = nil) {
         self.id = id
         self.title = title
         self.startAt = startAt
