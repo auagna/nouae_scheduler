@@ -11,15 +11,26 @@ struct ProjectCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(project.title)
                         .font(.headline)
-                    Label(project.category.rawValue, systemImage: project.category.symbolName)
-                        .font(.caption)
-                        .foregroundStyle(project.category.color)
+                    HStack(spacing: 6) {
+                        Label(project.category.rawValue, systemImage: project.category.symbolName)
+                        Text(project.type.rawValue)
+                        Text(project.status.rawValue)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(project.category.color)
                 }
                 Spacer()
                 Text(calendarTitle ?? "캘린더 미연결")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+            }
+
+            if !project.purpose.isEmpty {
+                Text(project.purpose)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
 
             HStack(spacing: 12) {
