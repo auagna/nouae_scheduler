@@ -98,6 +98,16 @@ struct CalendarEvent: Identifiable, Equatable {
     let calendarTitle: String
 }
 
+struct CalendarDisplayItem: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let startAt: Date
+    let endAt: Date
+    let sourceTitle: String
+    let color: Color
+    let isWorkBlock: Bool
+}
+
 struct Project: Identifiable, Codable, Equatable {
     var id = UUID()
     var title: String
@@ -306,7 +316,7 @@ final class EventKitManager: ObservableObject {
         try ensureCalendarAccess()
         guard let calendarIdentifier = block.calendarIdentifier,
               let calendar = eventStore.calendar(withIdentifier: calendarIdentifier) else {
-            throw AppError.message("카테고리에 연결된 Apple Calendar가 없습니다. Calendar 탭에서 연결해 주세요.")
+            throw AppError.message("카테고리 또는 프로젝트에 연결된 Apple Calendar가 없습니다. Calendar 탭에서 연결해 주세요.")
         }
         guard block.endAt > block.startAt else { throw AppError.message("종료 시간은 시작 시간보다 늦어야 합니다.") }
 
@@ -403,6 +413,16 @@ final class CalendarSelectionStore: ObservableObject {
         UserDefaults.standard.set(selectedIds, forKey: selectedKey)
     }
 
+    func selectAll() {
+        for index in calendars.indices { calendars[index].isSelected = true }
+        UserDefaults.standard.set(selectedIds, forKey: selectedKey)
+    }
+
+    func clearAll() {
+        for index in calendars.indices { calendars[index].isSelected = false }
+        UserDefaults.standard.set(selectedIds, forKey: selectedKey)
+    }
+
     func setCalendar(_ calendarId: String?, for category: ScheduleCategory) {
         categoryMap[category] = calendarId
         saveCategoryMap()
@@ -425,7 +445,7 @@ final class CalendarSelectionStore: ObservableObject {
     }
 
     private func saveCategoryMap() {
-        let stored = Dictionary(uniqueKeysWithValues: categoryMap.map { ($0.key.rawValue, $0.value) })
+        let stored = Dictionary(uniqueKeysWithValues: categoryMap.compactMap { key, value in value == nil ? nil : (key.rawValue, value!) })
         UserDefaults.standard.set(stored, forKey: categoryKey)
     }
 }
@@ -567,18 +587,10 @@ final class TimeBlockStore: ObservableObject {
     }
 
     func visibleBlocks(for date: Date, viewType: BoardViewType) -> [WorkBlock] {
-        let all = Self.loadPersistedBlocks()
-        let calendar = Calendar.current
-        switch viewType {
-        case .day:
-            return all.filter { calendar.isDate($0.startAt, inSameDayAs: date) }.sorted { $0.startAt < $1.startAt }
-        case .week:
-            return all.filter { calendar.isDate($0.startAt, equalTo: date, toGranularity: .weekOfYear) }.sorted { $0.startAt < $1.startAt }
-        case .month:
-            return all.filter { calendar.isDate($0.startAt, equalTo: date, toGranularity: .month) }.sorted { $0.startAt < $1.startAt }
-        case .year:
-            return all.filter { calendar.isDate($0.startAt, equalTo: date, toGranularity: .year) }.sorted { $0.startAt < $1.startAt }
-        }
+        let interval = dateInterval(for: date, viewType: viewType)
+        return Self.loadPersistedBlocks()
+            .filter { interval.intersects(DateInterval(start: $0.startAt, end: max($0.endAt, $0.startAt.addingTimeInterval(60)))) }
+            .sorted { $0.startAt < $1.startAt }
     }
 
     func create(title: String, category: ScheduleCategory, project: Project?, memo: String, startAt: Date, endAt: Date) {
@@ -661,6 +673,16 @@ final class TimeBlockStore: ObservableObject {
                 message = error.localizedDescription
                 save()
             }
+        }
+    }
+
+    private func dateInterval(for date: Date, viewType: BoardViewType) -> DateInterval {
+        let calendar = Calendar.current
+        switch viewType {
+        case .year: return calendar.dateInterval(of: .year, for: date) ?? DateInterval(start: date, duration: 365 * 24 * 3600)
+        case .month: return calendar.dateInterval(of: .month, for: date) ?? DateInterval(start: date, duration: 30 * 24 * 3600)
+        case .week: return calendar.dateInterval(of: .weekOfYear, for: date) ?? DateInterval(start: date, duration: 7 * 24 * 3600)
+        case .day: return calendar.dateInterval(of: .day, for: date) ?? DateInterval(start: date, duration: 24 * 3600)
         }
     }
 
@@ -891,15 +913,7 @@ struct DayTimeBoard: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            VStack(spacing: 0) {
-                ForEach(0..<24, id: \.self) { hour in
-                    HStack(alignment: .top) {
-                        Text(String(format: "%02d:00", hour)).font(.caption2).foregroundStyle(.secondary).frame(width: 50, alignment: .trailing)
-                        Rectangle().fill(Color.secondary.opacity(0.2)).frame(height: 1)
-                    }
-                    .frame(height: hourHeight, alignment: .top)
-                }
-            }
+            TimeRulerRows(hourHeight: hourHeight)
             ForEach(blocks) { block in
                 WorkBlockBoardCard(block: block, store: store, hourHeight: hourHeight)
                     .padding(.leading, 62)
@@ -913,6 +927,22 @@ struct DayTimeBoard: View {
     private func yOffset(_ date: Date) -> CGFloat {
         let components = Calendar.current.dateComponents([.hour, .minute], from: date)
         return CGFloat(components.hour ?? 0) * hourHeight + CGFloat(components.minute ?? 0) / 60 * hourHeight
+    }
+}
+
+struct TimeRulerRows: View {
+    let hourHeight: CGFloat
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<24, id: \.self) { hour in
+                HStack(alignment: .top) {
+                    Text(String(format: "%02d:00", hour)).font(.caption2).foregroundStyle(.secondary).frame(width: 50, alignment: .trailing)
+                    Rectangle().fill(Color.secondary.opacity(0.2)).frame(height: 1)
+                }
+                .frame(height: hourHeight, alignment: .top)
+            }
+        }
     }
 }
 
@@ -999,81 +1029,417 @@ struct WorkBlockRow: View {
 struct CalendarTabView: View {
     @ObservedObject var eventKitManager: EventKitManager
     @ObservedObject var selectionStore: CalendarSelectionStore
-    @State private var viewType: BoardViewType = .day
+    @State private var viewType: BoardViewType = .month
     @State private var selectedDate = Date()
     @State private var events: [CalendarEvent] = []
     @State private var showingFilter = false
     @State private var message: String?
 
+    private var workBlocks: [WorkBlock] {
+        let interval = visibleInterval
+        return TimeBlockStore.loadPersistedBlocks()
+            .filter { interval.intersects(DateInterval(start: $0.startAt, end: max($0.endAt, $0.startAt.addingTimeInterval(60)))) }
+            .sorted { $0.startAt < $1.startAt }
+    }
+
+    private var items: [CalendarDisplayItem] {
+        let eventItems = events.map { event in
+            CalendarDisplayItem(id: "event-\(event.id)", title: event.title, startAt: event.startAt, endAt: event.endAt, sourceTitle: event.calendarTitle, color: .blue, isWorkBlock: false)
+        }
+        let blockItems = workBlocks.map { block in
+            CalendarDisplayItem(id: "block-\(block.id.uuidString)", title: block.title, startAt: block.startAt, endAt: block.endAt, sourceTitle: block.projectTitle ?? block.category.rawValue, color: block.category.color, isWorkBlock: true)
+        }
+        return (eventItems + blockItems).sorted { $0.startAt < $1.startAt }
+    }
+
     var body: some View {
-        List {
-            Section {
-                Picker("View", selection: $viewType) {
-                    ForEach(BoardViewType.allCases) { type in Text(type.title).tag(type) }
-                }
-                .pickerStyle(.segmented)
-                HStack {
-                    Button { moveDate(-1) } label: { Image(systemName: "chevron.left") }
-                    Spacer()
-                    Text(dateTitle).font(.headline)
-                    Spacer()
-                    Button { moveDate(1) } label: { Image(systemName: "chevron.right") }
-                }
+        VStack(spacing: 0) {
+            CalendarToolbar(viewType: $viewType, selectedDate: selectedDate, title: dateTitle, moveDate: moveDate)
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
+
+            if let message {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .padding(.bottom, 6)
             }
-            if let message { Text(message).foregroundStyle(.secondary) }
-            Section("Apple Calendar") {
-                if events.isEmpty { Text("선택한 캘린더에 일정이 없습니다.").foregroundStyle(.secondary) }
-                ForEach(events) { event in
-                    VStack(alignment: .leading) {
-                        Text(event.title)
-                        Text("\(event.calendarTitle) · \(event.startAt.formatted(date: .abbreviated, time: .shortened))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            Section("nouae WorkBlocks") {
-                let blocks = TimeBlockStore.loadPersistedBlocks().filter { block in
-                    Calendar.current.isDate(block.startAt, equalTo: selectedDate, toGranularity: granularity)
-                }
-                if blocks.isEmpty { Text("표시할 WorkBlock이 없습니다.").foregroundStyle(.secondary) }
-                ForEach(blocks) { block in
-                    Text("\(block.title) · \(block.status.title)")
-                }
+
+            Divider()
+
+            ScrollView {
+                calendarBody
+                    .padding()
             }
         }
         .navigationTitle("Calendar")
         .toolbar { Button { showingFilter = true } label: { Image(systemName: "line.3.horizontal.decrease.circle") } }
-        .sheet(isPresented: $showingFilter) { NavigationStack { CalendarFilterView(selectionStore: selectionStore) } }
+        .sheet(isPresented: $showingFilter, onDismiss: { Task { await loadEvents() } }) { NavigationStack { CalendarFilterView(selectionStore: selectionStore) } }
         .task { await load() }
         .onChange(of: viewType) { _, _ in Task { await loadEvents() } }
     }
 
-    private var granularity: Calendar.Component {
-        switch viewType {
-        case .year: return .year
-        case .month: return .month
-        case .week: return .weekOfYear
-        case .day: return .day
+    @ViewBuilder
+    private var calendarBody: some View {
+        if message == nil && items.isEmpty {
+            ContentUnavailableView("선택한 캘린더에 일정이 없습니다.", systemImage: "calendar.badge.exclamationmark")
+        } else {
+            switch viewType {
+            case .day:
+                CalendarDayBoard(items: items, selectedDate: selectedDate)
+            case .week:
+                CalendarWeekBoard(items: items, selectedDate: selectedDate)
+            case .month:
+                CalendarMonthBoard(items: items, selectedDate: selectedDate)
+            case .year:
+                CalendarYearBoard(items: items, selectedDate: selectedDate)
+            }
         }
     }
 
-    private var dateTitle: String { selectedDate.formatted(date: .abbreviated, time: .omitted) }
+    private var visibleInterval: DateInterval {
+        let calendar = Calendar.current
+        switch viewType {
+        case .year: return calendar.dateInterval(of: .year, for: selectedDate) ?? DateInterval(start: selectedDate, duration: 365 * 24 * 3600)
+        case .month: return calendar.dateInterval(of: .month, for: selectedDate) ?? DateInterval(start: selectedDate, duration: 30 * 24 * 3600)
+        case .week: return calendar.dateInterval(of: .weekOfYear, for: selectedDate) ?? DateInterval(start: selectedDate, duration: 7 * 24 * 3600)
+        case .day: return calendar.dateInterval(of: .day, for: selectedDate) ?? DateInterval(start: selectedDate, duration: 24 * 3600)
+        }
+    }
+
+    private var dateTitle: String {
+        switch viewType {
+        case .year: return selectedDate.formatted(.dateTime.year())
+        case .month: return selectedDate.formatted(.dateTime.year().month(.wide))
+        case .week:
+            let interval = visibleInterval
+            return "\(interval.start.formatted(date: .abbreviated, time: .omitted)) - \(interval.end.addingTimeInterval(-1).formatted(date: .abbreviated, time: .omitted))"
+        case .day: return selectedDate.formatted(date: .abbreviated, time: .omitted)
+        }
+    }
 
     private func moveDate(_ value: Int) {
-        let component: Calendar.Component = viewType == .year ? .year : viewType == .month ? .month : viewType == .week ? .weekOfYear : .day
+        let component: Calendar.Component
+        switch viewType {
+        case .year: component = .year
+        case .month: component = .month
+        case .week: component = .weekOfYear
+        case .day: component = .day
+        }
         selectedDate = Calendar.current.date(byAdding: component, value: value, to: selectedDate) ?? selectedDate
         Task { await loadEvents() }
     }
 
     private func load() async {
-        do { selectionStore.setCalendars(try await eventKitManager.fetchCalendars()); await loadEvents() }
-        catch { message = error.localizedDescription }
+        do {
+            selectionStore.setCalendars(try await eventKitManager.fetchCalendars())
+            await loadEvents()
+        } catch {
+            message = error.localizedDescription
+        }
     }
 
     private func loadEvents() async {
-        do { events = try await eventKitManager.fetchEvents(on: selectedDate, calendarIds: selectionStore.selectedIds, viewType: viewType); message = nil }
-        catch { events = []; message = error.localizedDescription }
+        do {
+            events = try await eventKitManager.fetchEvents(on: selectedDate, calendarIds: selectionStore.selectedIds, viewType: viewType)
+            message = nil
+        } catch {
+            events = []
+            message = error.localizedDescription
+        }
+    }
+}
+
+struct CalendarToolbar: View {
+    @Binding var viewType: BoardViewType
+    let selectedDate: Date
+    let title: String
+    let moveDate: (Int) -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Picker("View", selection: $viewType) {
+                ForEach(BoardViewType.allCases) { type in Text(type.title).tag(type) }
+            }
+            .pickerStyle(.segmented)
+
+            HStack {
+                Button { moveDate(-1) } label: { Image(systemName: "chevron.left") }
+                    .buttonStyle(.bordered)
+                Spacer()
+                Text(title).font(.headline).multilineTextAlignment(.center)
+                Spacer()
+                Button { moveDate(1) } label: { Image(systemName: "chevron.right") }
+                    .buttonStyle(.bordered)
+            }
+        }
+    }
+}
+
+struct CalendarDayBoard: View {
+    let items: [CalendarDisplayItem]
+    let selectedDate: Date
+    private let hourHeight: CGFloat = 64
+
+    private var dayItems: [CalendarDisplayItem] {
+        items.filter { Calendar.current.isDate($0.startAt, inSameDayAs: selectedDate) }
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            TimeRulerRows(hourHeight: hourHeight)
+            ForEach(dayItems) { item in
+                CalendarTimedItemBlock(item: item)
+                    .padding(.leading, 62)
+                    .offset(y: yOffset(item.startAt))
+                    .frame(height: max(42, height(for: item)))
+            }
+        }
+        .frame(height: CGFloat(24) * hourHeight)
+    }
+
+    private func yOffset(_ date: Date) -> CGFloat {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return CGFloat(components.hour ?? 0) * hourHeight + CGFloat(components.minute ?? 0) / 60 * hourHeight
+    }
+
+    private func height(for item: CalendarDisplayItem) -> CGFloat {
+        max(15, CGFloat(item.endAt.timeIntervalSince(item.startAt) / 3600) * hourHeight)
+    }
+}
+
+struct CalendarTimedItemBlock: View {
+    let item: CalendarDisplayItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                Image(systemName: item.isWorkBlock ? "cube.box" : "calendar")
+                    .font(.caption2)
+                Text(item.title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+            }
+            Text("\(item.startAt.formatted(date: .omitted, time: .shortened)) - \(item.endAt.formatted(date: .omitted, time: .shortened))")
+                .font(.caption2)
+                .lineLimit(1)
+            Text(item.sourceTitle)
+                .font(.caption2)
+                .lineLimit(1)
+        }
+        .padding(7)
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(item.color.gradient, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+struct CalendarWeekBoard: View {
+    let items: [CalendarDisplayItem]
+    let selectedDate: Date
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 7)
+
+    private var weekDays: [Date] {
+        let calendar = Calendar.current
+        let start = calendar.dateInterval(of: .weekOfYear, for: selectedDate)?.start ?? selectedDate
+        return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: start) }
+    }
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            ForEach(weekDays, id: \.self) { day in
+                CalendarDayColumn(day: day, items: itemsForDay(day))
+            }
+        }
+    }
+
+    private func itemsForDay(_ day: Date) -> [CalendarDisplayItem] {
+        items.filter { Calendar.current.isDate($0.startAt, inSameDayAs: day) }
+    }
+}
+
+struct CalendarDayColumn: View {
+    let day: Date
+    let items: [CalendarDisplayItem]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(day.formatted(.dateTime.weekday(.abbreviated)))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(day.formatted(.dateTime.day()))
+                    .font(.headline)
+            }
+            .padding(.bottom, 4)
+
+            if items.isEmpty {
+                Text("-")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                ForEach(items.prefix(6)) { item in
+                    CalendarItemChip(item: item, compact: true)
+                }
+                if items.count > 6 {
+                    Text("+\(items.count - 6)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .frame(minHeight: 180, alignment: .topLeading)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+struct CalendarMonthBoard: View {
+    let items: [CalendarDisplayItem]
+    let selectedDate: Date
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
+
+    private var cells: [Date?] {
+        let calendar = Calendar.current
+        guard let month = calendar.dateInterval(of: .month, for: selectedDate),
+              let range = calendar.range(of: .day, in: .month, for: selectedDate) else { return [] }
+        let first = month.start
+        let weekday = calendar.component(.weekday, from: first)
+        let leading = (weekday - calendar.firstWeekday + 7) % 7
+        let dates = range.compactMap { calendar.date(byAdding: .day, value: $0 - 1, to: first) }
+        return Array(repeating: nil, count: leading) + dates
+    }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            CalendarWeekdayHeader()
+            LazyVGrid(columns: columns, spacing: 6) {
+                ForEach(Array(cells.enumerated()), id: \.offset) { _, date in
+                    CalendarMonthCell(date: date, items: date.map(itemsForDay) ?? [])
+                }
+            }
+        }
+    }
+
+    private func itemsForDay(_ day: Date) -> [CalendarDisplayItem] {
+        items.filter { Calendar.current.isDate($0.startAt, inSameDayAs: day) }
+    }
+}
+
+struct CalendarWeekdayHeader: View {
+    private let days = Calendar.current.shortWeekdaySymbols
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 6) {
+            ForEach(days, id: \.self) { day in
+                Text(day)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+}
+
+struct CalendarMonthCell: View {
+    let date: Date?
+    let items: [CalendarDisplayItem]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let date {
+                Text(date.formatted(.dateTime.day()))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Calendar.current.isDateInToday(date) ? Color.accentColor : Color.primary)
+                ForEach(items.prefix(3)) { item in
+                    CalendarItemChip(item: item, compact: true)
+                }
+                if items.count > 3 {
+                    Text("+\(items.count - 3)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(6)
+        .frame(minHeight: 112, alignment: .topLeading)
+        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var backgroundColor: Color {
+        guard let date else { return Color.clear }
+        return Calendar.current.isDateInToday(date) ? Color.accentColor.opacity(0.12) : Color(.secondarySystemGroupedBackground)
+    }
+}
+
+struct CalendarYearBoard: View {
+    let items: [CalendarDisplayItem]
+    let selectedDate: Date
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 3)
+
+    private var months: [Date] {
+        let calendar = Calendar.current
+        let start = calendar.dateInterval(of: .year, for: selectedDate)?.start ?? selectedDate
+        return (0..<12).compactMap { calendar.date(byAdding: .month, value: $0, to: start) }
+    }
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 10) {
+            ForEach(months, id: \.self) { month in
+                CalendarYearMonthCard(month: month, items: itemsForMonth(month))
+            }
+        }
+    }
+
+    private func itemsForMonth(_ month: Date) -> [CalendarDisplayItem] {
+        items.filter { Calendar.current.isDate($0.startAt, equalTo: month, toGranularity: .month) }
+    }
+}
+
+struct CalendarYearMonthCard: View {
+    let month: Date
+    let items: [CalendarDisplayItem]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(month.formatted(.dateTime.month(.abbreviated)))
+                .font(.headline)
+            Text("\(items.count) items")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(items.prefix(4)) { item in
+                CalendarItemChip(item: item, compact: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(minHeight: 150, alignment: .topLeading)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+struct CalendarItemChip: View {
+    let item: CalendarDisplayItem
+    var compact = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle().fill(item.color).frame(width: 6, height: 6)
+            Text(compact ? item.title : "\(item.startAt.formatted(date: .omitted, time: .shortened)) \(item.title)")
+                .font(.caption2)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(item.color.opacity(0.14), in: RoundedRectangle(cornerRadius: 5))
     }
 }
 
@@ -1089,6 +1455,13 @@ struct CalendarFilterView: View {
                         Text("연결 필요").tag(String?.none)
                         ForEach(selectionStore.calendars) { source in Text(source.title).tag(String?.some(source.id)) }
                     }
+                }
+            }
+            Section {
+                HStack {
+                    Button("전체 선택") { selectionStore.selectAll() }
+                    Spacer()
+                    Button("전체 해제") { selectionStore.clearAll() }
                 }
             }
             Section("표시할 캘린더") {
