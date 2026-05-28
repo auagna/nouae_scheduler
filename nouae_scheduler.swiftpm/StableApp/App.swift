@@ -196,6 +196,12 @@ struct NextAdjustment: Identifiable, Codable, Equatable {
     var isActive = true
 }
 
+struct ProjectAdjustment: Identifiable {
+    let project: Project
+    let adjustment: NextAdjustment
+    var id: UUID { adjustment.id }
+}
+
 struct ProjectSummary {
     var totalBlocks: Int
     var totalMinutes: Int
@@ -519,12 +525,12 @@ final class ProjectStore: ObservableObject {
         adjustments.filter { $0.projectId == project.id && $0.isActive }.sorted { $0.createdAt > $1.createdAt }.first
     }
 
-    func activeAdjustments() -> [(Project, NextAdjustment)] {
+    func activeAdjustments() -> [ProjectAdjustment] {
         adjustments.filter(\.isActive).compactMap { adjustment in
             guard let project = project(id: adjustment.projectId) else { return nil }
-            return (project, adjustment)
+            return ProjectAdjustment(project: project, adjustment: adjustment)
         }
-        .sorted { $0.1.createdAt > $1.1.createdAt }
+        .sorted { $0.adjustment.createdAt > $1.adjustment.createdAt }
     }
 
     func blocks(for project: Project) -> [WorkBlock] {
@@ -717,9 +723,7 @@ enum DateHelper {
         return calendar.date(bySettingHour: components.hour ?? 0, minute: min(snappedMinute, 59), second: 0, of: date) ?? date
     }
 
-    static func startOfDay(_ date: Date) -> Date {
-        Calendar.current.startOfDay(for: date)
-    }
+    static func startOfDay(_ date: Date) -> Date { Calendar.current.startOfDay(for: date) }
 
     static func date(on day: Date, minutesFromMidnight: Int) -> Date {
         Calendar.current.date(byAdding: .minute, value: minutesFromMidnight, to: startOfDay(day)) ?? day
@@ -757,15 +761,12 @@ struct DashboardView: View {
 
     private var todayBlocks: [WorkBlock] { TimeBlockStore.loadPersistedBlocks().filter { Calendar.current.isDateInToday($0.startAt) } }
     private var unfinishedBlocks: [WorkBlock] { todayBlocks.filter { $0.status == .planned || $0.status == .inProgress || $0.status == .delayed } }
-    private var activeProjects: [Project] { projectStore.projects.filter { projectStore.summary(for: $0).todayMinutes > 0 || projectStore.rawTasks(for: $0).isEmpty == false } }
+    private var activeProjects: [Project] { projectStore.projects.filter { projectStore.summary(for: $0).todayMinutes > 0 || !projectStore.rawTasks(for: $0).isEmpty } }
     private var coreBlocks: [WorkBlock] { todayBlocks.filter { $0.status == .planned || $0.status == .inProgress }.prefix(5).map { $0 } }
 
     var body: some View {
         List {
-            Section("오늘 브리핑") {
-                Text(briefingText)
-                    .font(.headline)
-            }
+            Section("오늘 브리핑") { Text(briefingText).font(.headline) }
             Section("오늘 상태 요약") {
                 LabeledContent("Apple Calendar 일정", value: "\(events.count)개")
                 LabeledContent("nouae WorkBlock", value: "\(todayBlocks.count)개")
@@ -793,12 +794,12 @@ struct DashboardView: View {
                 LabeledContent("Delayed", value: "\(TimeBlockStore.loadPersistedBlocks().filter { $0.status == .delayed }.count)개")
             }
             Section("최근 Next Adjustment") {
-                let adjustments = projectStore.activeAdjustments()
-                if adjustments.isEmpty { Text("최근 조정 메모가 없습니다.").foregroundStyle(.secondary) }
-                ForEach(Array(adjustments.prefix(5)), id: \.1.id) { project, adjustment in
+                let rows = projectStore.activeAdjustments()
+                if rows.isEmpty { Text("최근 조정 메모가 없습니다.").foregroundStyle(.secondary) }
+                ForEach(Array(rows.prefix(5))) { row in
                     VStack(alignment: .leading) {
-                        Text(project.title).font(.headline)
-                        Text(adjustment.content).font(.caption).foregroundStyle(.secondary)
+                        Text(row.project.title).font(.headline)
+                        Text(row.adjustment.content).font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -896,7 +897,6 @@ struct TodayView: View {
                         .buttonStyle(.borderedProminent)
                 }
             }
-
             GroupBox("RawTask Inbox") {
                 VStack(alignment: .leading, spacing: 8) {
                     if projectStore.rawInbox().isEmpty { Text("입력된 RawTask가 없습니다.").foregroundStyle(.secondary) }
@@ -906,14 +906,12 @@ struct TodayView: View {
                     }
                 }
             }
-
             GroupBox("Yesterday Unfinished") {
                 VStack(alignment: .leading, spacing: 8) {
                     if yesterdayUnfinished.isEmpty { Text("어제 미완료 블록이 없습니다.").foregroundStyle(.secondary) }
                     ForEach(yesterdayUnfinished) { WorkBlockSummaryRow(block: $0) }
                 }
             }
-
             GroupBox("Delayed Tasks") {
                 VStack(alignment: .leading, spacing: 8) {
                     if delayedTasks.isEmpty { Text("미룬 작업이 없습니다.").foregroundStyle(.secondary) }
@@ -928,13 +926,11 @@ struct TodayView: View {
             GroupBox("Calendar Board") {
                 VStack(spacing: 10) {
                     HStack {
-                        Button { moveDate(-1) } label: { Image(systemName: "chevron.left") }
-                            .buttonStyle(.bordered)
+                        Button { moveDate(-1) } label: { Image(systemName: "chevron.left") }.buttonStyle(.bordered)
                         Spacer()
                         Text(boardTitle).font(.headline)
                         Spacer()
-                        Button { moveDate(1) } label: { Image(systemName: "chevron.right") }
-                            .buttonStyle(.bordered)
+                        Button { moveDate(1) } label: { Image(systemName: "chevron.right") }.buttonStyle(.bordered)
                     }
                     Picker("View", selection: $boardViewType) {
                         Text("Day").tag(BoardViewType.day)
@@ -942,7 +938,6 @@ struct TodayView: View {
                         Text("Month").tag(BoardViewType.month)
                     }
                     .pickerStyle(.segmented)
-
                     switch boardViewType {
                     case .day:
                         TodayDayBoard(blocks: visibleBlocks, selectedDate: selectedDate, store: store, onDropTask: placeRawTask)
@@ -955,17 +950,13 @@ struct TodayView: View {
                     }
                 }
             }
-
             GroupBox("WorkBlock Timeline") {
                 VStack(alignment: .leading, spacing: 8) {
                     if visibleBlocks.isEmpty { Text("배치된 WorkBlock이 없습니다.").foregroundStyle(.secondary) }
                     ForEach(visibleBlocks) { block in WorkBlockRow(block: block, store: store) }
                 }
             }
-
-            if let message = store.message {
-                Text(message).font(.caption).foregroundStyle(.red)
-            }
+            if let message = store.message { Text(message).font(.caption).foregroundStyle(.red) }
         }
     }
 
@@ -1007,8 +998,7 @@ struct RawTaskCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                Image(systemName: "line.3.horizontal")
-                    .foregroundStyle(.secondary)
+                Image(systemName: "line.3.horizontal").foregroundStyle(.secondary)
                 Text(task.title).font(.headline)
                 Spacer()
                 Text(task.category.rawValue)
@@ -1095,8 +1085,7 @@ struct TodayWeekDayColumn: View {
             Text(day.formatted(.dateTime.weekday(.abbreviated))).font(.caption2).foregroundStyle(.secondary)
             Text(day.formatted(.dateTime.day())).font(.headline)
             ZStack(alignment: .topLeading) {
-                TimeRulerRows(hourHeight: hourHeight)
-                    .opacity(0.45)
+                TimeRulerRows(hourHeight: hourHeight).opacity(0.45)
                 ForEach(blocks) { block in
                     MiniEditableWorkBlock(block: block, store: store, hourHeight: hourHeight)
                         .padding(.leading, 28)
@@ -1227,12 +1216,12 @@ struct EditableWorkBlockCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Capsule().fill(Color.white.opacity(0.8)).frame(width: 44, height: 5).gesture(resizeGesture(isStart: true))
+            Capsule().fill(Color.white.opacity(0.8)).frame(width: 44, height: 5).gesture(topResizeGesture)
             HStack { Text(block.title).font(.headline).lineLimit(1); Spacer(); Text(block.status.title).font(.caption2) }
             Text("\(block.startAt.formatted(date: .omitted, time: .shortened)) - \(block.endAt.formatted(date: .omitted, time: .shortened)) · \(block.syncStatus)").font(.caption2)
             if let projectTitle = block.projectTitle { Text(projectTitle).font(.caption2) }
             Spacer(minLength: 0)
-            Capsule().fill(Color.white.opacity(0.8)).frame(width: 44, height: 5).gesture(resizeGesture(isStart: false))
+            Capsule().fill(Color.white.opacity(0.8)).frame(width: 44, height: 5).gesture(bottomResizeGesture)
         }
         .padding(8)
         .foregroundStyle(.white)
@@ -1241,6 +1230,7 @@ struct EditableWorkBlockCard: View {
         .offset(y: moveOffset + topResizeOffset)
         .animation(.spring(response: 0.22, dampingFraction: 0.86), value: moveOffset)
         .animation(.spring(response: 0.22, dampingFraction: 0.86), value: topResizeOffset)
+        .animation(.spring(response: 0.22, dampingFraction: 0.86), value: bottomResizeOffset)
         .gesture(moveGesture)
     }
 
@@ -1254,13 +1244,16 @@ struct EditableWorkBlockCard: View {
             .onEnded { value in store.move(block, minutes: snappedMinutes(for: value.translation.height)) }
     }
 
-    private func resizeGesture(isStart: Bool) -> some Gesture {
+    private var topResizeGesture: some Gesture {
         DragGesture()
-            .updating(isStart ? $topResizeOffset : $bottomResizeOffset) { value, state, _ in state = value.translation.height }
-            .onEnded { value in
-                let minutes = snappedMinutes(for: value.translation.height)
-                if isStart { store.resizeStart(block, minutes: minutes) } else { store.resizeEnd(block, minutes: minutes) }
-            }
+            .updating($topResizeOffset) { value, state, _ in state = value.translation.height }
+            .onEnded { value in store.resizeStart(block, minutes: snappedMinutes(for: value.translation.height)) }
+    }
+
+    private var bottomResizeGesture: some Gesture {
+        DragGesture()
+            .updating($bottomResizeOffset) { value, state, _ in state = value.translation.height }
+            .onEnded { value in store.resizeEnd(block, minutes: snappedMinutes(for: value.translation.height)) }
     }
 
     private func snappedMinutes(for translation: CGFloat) -> Int {
