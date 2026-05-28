@@ -69,6 +69,38 @@ struct Project: Identifiable, Codable, Equatable {
     var createdAt = Date()
 }
 
+struct RawTask: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var projectId: UUID
+    var title: String
+    var memo: String
+    var createdAt = Date()
+    var isConvertedToBlock = false
+}
+
+struct ProjectLog: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var projectId: UUID
+    var title: String
+    var content: String
+    var createdAt = Date()
+}
+
+struct NextAdjustment: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var projectId: UUID
+    var content: String
+    var createdAt = Date()
+    var isActive = true
+}
+
+struct ProjectSummary: Equatable {
+    var totalBlocks: Int
+    var totalMinutes: Int
+    var todayMinutes: Int
+    var lastWorkedAt: Date?
+}
+
 struct WorkBlock: Identifiable, Codable, Equatable {
     var id = UUID()
     var title: String
@@ -280,19 +312,27 @@ final class CalendarSelectionStore: ObservableObject {
 @MainActor
 final class ProjectStore: ObservableObject {
     @Published var projects: [Project] = []
-    private let key = "stable.projects"
+    @Published var rawTasks: [RawTask] = []
+    @Published var logs: [ProjectLog] = []
+    @Published var adjustments: [NextAdjustment] = []
+
+    private let projectsKey = "stable.projects"
+    private let rawTasksKey = "stable.rawTasks"
+    private let logsKey = "stable.projectLogs"
+    private let adjustmentsKey = "stable.nextAdjustments"
 
     init() {
-        guard let data = UserDefaults.standard.data(forKey: key),
-              let decoded = try? JSONDecoder().decode([Project].self, from: data) else { return }
-        projects = decoded
+        projects = load([Project].self, key: projectsKey) ?? []
+        rawTasks = load([RawTask].self, key: rawTasksKey) ?? []
+        logs = load([ProjectLog].self, key: logsKey) ?? []
+        adjustments = load([NextAdjustment].self, key: adjustmentsKey) ?? []
     }
 
     func create(title: String, category: ScheduleCategory, purpose: String, calendarIdentifier: String?) {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty else { return }
         projects.append(Project(title: cleanTitle, category: category, purpose: purpose, calendarIdentifier: calendarIdentifier))
-        save()
+        save(projects, key: projectsKey)
     }
 
     func projects(for category: ScheduleCategory) -> [Project] {
@@ -304,8 +344,99 @@ final class ProjectStore: ObservableObject {
         return projects.first { $0.id == id }
     }
 
-    private func save() {
-        if let data = try? JSONEncoder().encode(projects) {
+    func addRawTask(project: Project, title: String, memo: String) {
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTitle.isEmpty else { return }
+        rawTasks.append(RawTask(projectId: project.id, title: cleanTitle, memo: memo))
+        save(rawTasks, key: rawTasksKey)
+    }
+
+    func rawTasks(for project: Project) -> [RawTask] {
+        rawTasks
+            .filter { $0.projectId == project.id && !$0.isConvertedToBlock }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func addLog(project: Project, title: String, content: String) {
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTitle.isEmpty || !cleanContent.isEmpty else { return }
+        logs.append(ProjectLog(projectId: project.id, title: cleanTitle.isEmpty ? "기록" : cleanTitle, content: cleanContent))
+        save(logs, key: logsKey)
+    }
+
+    func logs(for project: Project) -> [ProjectLog] {
+        logs.filter { $0.projectId == project.id }.sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func setNextAdjustment(project: Project, content: String) {
+        for index in adjustments.indices where adjustments[index].projectId == project.id {
+            adjustments[index].isActive = false
+        }
+        let cleanContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanContent.isEmpty else {
+            save(adjustments, key: adjustmentsKey)
+            return
+        }
+        adjustments.append(NextAdjustment(projectId: project.id, content: cleanContent))
+        save(adjustments, key: adjustmentsKey)
+    }
+
+    func activeAdjustment(for project: Project) -> NextAdjustment? {
+        adjustments
+            .filter { $0.projectId == project.id && $0.isActive }
+            .sorted { $0.createdAt > $1.createdAt }
+            .first
+    }
+
+    func summary(for project: Project) -> ProjectSummary {
+        let blocks = TimeBlockStore.loadPersistedBlocks().filter { $0.projectId == project.id }
+        let todayBlocks = blocks.filter { Calendar.current.isDateInToday($0.startAt) }
+        return ProjectSummary(
+            totalBlocks: blocks.count,
+            totalMinutes: blocks.reduce(0) { $0 + $1.minutes },
+            todayMinutes: todayBlocks.reduce(0) { $0 + $1.minutes },
+            lastWorkedAt: blocks.map(\.endAt).max()
+        )
+    }
+
+    func blocks(for project: Project) -> [WorkBlock] {
+        TimeBlockStore.loadPersistedBlocks()
+            .filter { $0.projectId == project.id }
+            .sorted { $0.startAt > $1.startAt }
+    }
+
+    func aiPrompt(for project: Project) -> String {
+        let summary = summary(for: project)
+        let taskText = rawTasks(for: project).map { "- \($0.title)" }.joined(separator: "\n")
+        let logText = logs(for: project).prefix(5).map { "- \($0.title): \($0.content)" }.joined(separator: "\n")
+        return """
+        nouae Scheduler Project Brief Builder
+
+        Project: \(project.title)
+        Category: \(project.category.rawValue)
+        Purpose: \(project.purpose)
+        Total work: \(summary.totalMinutes) minutes
+        Today work: \(summary.todayMinutes) minutes
+        Next adjustment: \(activeAdjustment(for: project)?.content ?? "없음")
+
+        RawTask Inbox:
+        \(taskText.isEmpty ? "없음" : taskText)
+
+        Recent Logs:
+        \(logText.isEmpty ? "없음" : logText)
+
+        요청: 이 프로젝트의 현재 목적, 다음 작업, 조정 포인트, 리스크, 1주 액션 플랜을 간결하게 정리해줘.
+        """
+    }
+
+    private func load<T: Decodable>(_ type: T.Type, key: String) -> T? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
+    }
+
+    private func save<T: Encodable>(_ value: T, key: String) {
+        if let data = try? JSONEncoder().encode(value) {
             UserDefaults.standard.set(data, forKey: key)
         }
     }
@@ -316,7 +447,7 @@ final class TimeBlockStore: ObservableObject {
     @Published var blocks: [WorkBlock] = []
     @Published var message: String?
 
-    private let key = "stable.blocks"
+    private static let key = "stable.blocks"
     private let eventKitManager: EventKitManager
     private let calendarSelectionStore: CalendarSelectionStore
     private var syncTasks: [UUID: Task<Void, Never>] = [:]
@@ -325,6 +456,14 @@ final class TimeBlockStore: ObservableObject {
         self.eventKitManager = eventKitManager
         self.calendarSelectionStore = calendarSelectionStore
         load()
+    }
+
+    static func loadPersistedBlocks() -> [WorkBlock] {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let decoded = try? JSONDecoder().decode([WorkBlock].self, from: data) else {
+            return []
+        }
+        return decoded
     }
 
     func create(title: String, category: ScheduleCategory, project: Project?, startAt: Date, endAt: Date) {
@@ -406,14 +545,14 @@ final class TimeBlockStore: ObservableObject {
     }
 
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: key),
-              let decoded = try? JSONDecoder().decode([WorkBlock].self, from: data) else { return }
-        blocks = decoded.filter { Calendar.current.isDateInToday($0.startAt) }
+        blocks = Self.loadPersistedBlocks().filter { Calendar.current.isDateInToday($0.startAt) }
     }
 
     private func save() {
-        if let data = try? JSONEncoder().encode(blocks) {
-            UserDefaults.standard.set(data, forKey: key)
+        var allBlocks = Self.loadPersistedBlocks().filter { !Calendar.current.isDateInToday($0.startAt) }
+        allBlocks.append(contentsOf: blocks)
+        if let data = try? JSONEncoder().encode(allBlocks) {
+            UserDefaults.standard.set(data, forKey: Self.key)
         }
     }
 }
@@ -700,17 +839,136 @@ struct ProjectsView: View {
                     Text("프로젝트가 없습니다.").foregroundStyle(.secondary)
                 } else {
                     ForEach(projectStore.projects) { project in
-                        VStack(alignment: .leading) {
-                            Text(project.title).font(.headline)
-                            Text("\(project.category.rawValue) · \(project.purpose)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        NavigationLink {
+                            ProjectDetailView(project: project, projectStore: projectStore)
+                        } label: {
+                            ProjectCard(project: project, summary: projectStore.summary(for: project))
                         }
                     }
                 }
             }
         }
         .navigationTitle("Projects")
+    }
+}
+
+struct ProjectCard: View {
+    let project: Project
+    let summary: ProjectSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(project.title).font(.headline)
+            Text("\(project.category.rawValue) · \(project.purpose)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Text("오늘 \(summary.todayMinutes)분")
+                Text("전체 \(summary.totalMinutes)분")
+                Text("블록 \(summary.totalBlocks)개")
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+struct ProjectDetailView: View {
+    let project: Project
+    @ObservedObject var projectStore: ProjectStore
+
+    @State private var taskTitle = ""
+    @State private var taskMemo = ""
+    @State private var logTitle = ""
+    @State private var logContent = ""
+    @State private var adjustment = ""
+
+    private var summary: ProjectSummary {
+        projectStore.summary(for: project)
+    }
+
+    var body: some View {
+        List {
+            Section("Project Summary") {
+                LabeledContent("카테고리", value: project.category.rawValue)
+                LabeledContent("목적", value: project.purpose.isEmpty ? "미입력" : project.purpose)
+                LabeledContent("오늘", value: "\(summary.todayMinutes)분")
+                LabeledContent("전체", value: "\(summary.totalMinutes)분")
+                LabeledContent("블록", value: "\(summary.totalBlocks)개")
+            }
+
+            Section("Today Work") {
+                let blocks = projectStore.blocks(for: project)
+                if blocks.isEmpty {
+                    Text("연결된 WorkBlock이 없습니다.").foregroundStyle(.secondary)
+                } else {
+                    ForEach(blocks) { block in
+                        VStack(alignment: .leading) {
+                            Text(block.title)
+                            Text("\(block.startAt.formatted(date: .abbreviated, time: .shortened)) - \(block.endAt.formatted(date: .omitted, time: .shortened))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            Section("RawTask Inbox") {
+                TextField("작업", text: $taskTitle)
+                TextField("메모", text: $taskMemo)
+                Button("RawTask 추가") {
+                    projectStore.addRawTask(project: project, title: taskTitle, memo: taskMemo)
+                    taskTitle = ""
+                    taskMemo = ""
+                }
+                ForEach(projectStore.rawTasks(for: project)) { task in
+                    VStack(alignment: .leading) {
+                        Text(task.title)
+                        if !task.memo.isEmpty {
+                            Text(task.memo).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            Section("Recent Logs") {
+                TextField("로그 제목", text: $logTitle)
+                TextField("내용", text: $logContent, axis: .vertical)
+                Button("로그 작성") {
+                    projectStore.addLog(project: project, title: logTitle, content: logContent)
+                    logTitle = ""
+                    logContent = ""
+                }
+                ForEach(projectStore.logs(for: project)) { log in
+                    VStack(alignment: .leading) {
+                        Text(log.title).font(.headline)
+                        Text(log.content).foregroundStyle(.secondary)
+                        Text(log.createdAt.formatted(date: .abbreviated, time: .shortened))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            Section("Next Adjustment") {
+                TextField("다음 조정", text: $adjustment, axis: .vertical)
+                Button("저장") {
+                    projectStore.setNextAdjustment(project: project, content: adjustment)
+                    adjustment = ""
+                }
+                if let active = projectStore.activeAdjustment(for: project) {
+                    Text(active.content).foregroundStyle(.secondary)
+                }
+            }
+
+            Section("AI Brief Prompt Export") {
+                ShareLink(item: projectStore.aiPrompt(for: project)) {
+                    Label("프롬프트 공유/복사", systemImage: "square.and.arrow.up")
+                }
+            }
+        }
+        .navigationTitle(project.title)
     }
 }
 
