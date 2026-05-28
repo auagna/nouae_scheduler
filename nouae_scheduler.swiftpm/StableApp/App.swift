@@ -1,5 +1,6 @@
 import EventKit
 import SwiftUI
+import UIKit
 
 @main
 struct NouAESchedulerApp: App {
@@ -52,6 +53,7 @@ enum WorkBlockStatus: String, CaseIterable, Identifiable, Codable {
     case stopped
 
     var id: String { rawValue }
+
     var title: String {
         switch self {
         case .planned: return "예정"
@@ -71,6 +73,24 @@ enum BoardViewType: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
+}
+
+enum TodayLayoutMode: String, CaseIterable, Identifiable {
+    case verticalSplit
+    case horizontalSplit
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .verticalSplit: return "Vertical"
+        case .horizontalSplit: return "Horizontal"
+        }
+    }
+
+    static var defaultMode: TodayLayoutMode {
+        UIDevice.current.userInterfaceIdiom == .pad ? .horizontalSplit : .verticalSplit
+    }
 }
 
 struct CalendarSource: Identifiable, Equatable {
@@ -108,11 +128,53 @@ struct Project: Identifiable, Codable, Equatable {
 
 struct RawTask: Identifiable, Codable, Equatable {
     var id = UUID()
-    var projectId: UUID
     var title: String
     var memo: String
+    var category: ScheduleCategory
+    var projectId: UUID?
     var createdAt = Date()
+    var dueAt: Date?
+    var repeatRule: String?
     var isConvertedToBlock = false
+
+    init(
+        id: UUID = UUID(),
+        title: String,
+        memo: String = "",
+        category: ScheduleCategory = .work,
+        projectId: UUID? = nil,
+        createdAt: Date = Date(),
+        dueAt: Date? = nil,
+        repeatRule: String? = nil,
+        isConvertedToBlock: Bool = false
+    ) {
+        self.id = id
+        self.title = title
+        self.memo = memo
+        self.category = category
+        self.projectId = projectId
+        self.createdAt = createdAt
+        self.dueAt = dueAt
+        self.repeatRule = repeatRule
+        self.isConvertedToBlock = isConvertedToBlock
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, memo, category, projectId, createdAt, dueAt, repeatRule, isConvertedToBlock
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? "새 작업"
+        memo = try container.decodeIfPresent(String.self, forKey: .memo) ?? ""
+        category = try container.decodeIfPresent(ScheduleCategory.self, forKey: .category) ?? .work
+        projectId = try container.decodeIfPresent(UUID.self, forKey: .projectId)
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        dueAt = try container.decodeIfPresent(Date.self, forKey: .dueAt)
+        repeatRule = try container.decodeIfPresent(String.self, forKey: .repeatRule)
+        isConvertedToBlock = try container.decodeIfPresent(Bool.self, forKey: .isConvertedToBlock) ?? false
+    }
 }
 
 struct ProjectLog: Identifiable, Codable, Equatable {
@@ -251,7 +313,7 @@ final class EventKitManager: ObservableObject {
 
     func fetchEvents(on date: Date, calendarIds: [String], viewType: BoardViewType) async throws -> [CalendarEvent] {
         try ensureCalendarAccess()
-        let interval = dateInterval(for: date, viewType: viewType)
+        let interval = DateHelper.interval(for: date, viewType: viewType)
         let calendars: [EKCalendar]? = calendarIds.isEmpty ? nil : calendarIds.compactMap { eventStore.calendar(withIdentifier: $0) }
         let predicate = eventStore.predicateForEvents(withStart: interval.start, end: interval.end, calendars: calendars)
         return eventStore.events(matching: predicate)
@@ -302,22 +364,12 @@ final class EventKitManager: ObservableObject {
 
     private func ensureCalendarAccess() throws {
         let status = EKEventStore.authorizationStatus(for: .event)
-        guard status == .authorized || status == .fullAccess else { throw AppError.message("캘린더 권한이 없습니다. Settings 탭에서 권한을 요청해 주세요.") }
+        guard status == .authorized || status == .fullAccess else { throw AppError.message("캘린더 권한이 없습니다. Profile 탭에서 권한을 요청해 주세요.") }
     }
 
     private func ensureReminderAccess() throws {
         let status = EKEventStore.authorizationStatus(for: .reminder)
-        guard status == .authorized || status == .fullAccess else { throw AppError.message("미리알림 권한이 없습니다. Settings 탭에서 권한을 요청해 주세요.") }
-    }
-
-    private func dateInterval(for date: Date, viewType: BoardViewType) -> DateInterval {
-        let calendar = Calendar.current
-        switch viewType {
-        case .year: return calendar.dateInterval(of: .year, for: date) ?? DateInterval(start: date, duration: 365 * 24 * 3600)
-        case .month: return calendar.dateInterval(of: .month, for: date) ?? DateInterval(start: date, duration: 30 * 24 * 3600)
-        case .week: return calendar.dateInterval(of: .weekOfYear, for: date) ?? DateInterval(start: date, duration: 7 * 24 * 3600)
-        case .day: return calendar.dateInterval(of: .day, for: date) ?? DateInterval(start: date, duration: 24 * 3600)
-        }
+        guard status == .authorized || status == .fullAccess else { throw AppError.message("미리알림 권한이 없습니다. Profile 탭에서 권한을 요청해 주세요.") }
     }
 
     private func statusText(_ status: EKAuthorizationStatus) -> String {
@@ -425,16 +477,27 @@ final class ProjectStore: ObservableObject {
 
     func projects(for category: ScheduleCategory) -> [Project] { projects.filter { $0.category == category } }
     func project(id: UUID?) -> Project? { guard let id else { return nil }; return projects.first { $0.id == id } }
+    func task(id: UUID) -> RawTask? { rawTasks.first { $0.id == id } }
 
-    func addRawTask(project: Project, title: String, memo: String) {
+    func addRawTask(title: String, memo: String, category: ScheduleCategory, projectId: UUID?) {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty else { return }
-        rawTasks.append(RawTask(projectId: project.id, title: cleanTitle, memo: memo))
+        rawTasks.append(RawTask(title: cleanTitle, memo: memo, category: category, projectId: projectId))
         save(rawTasks, key: rawTasksKey)
+    }
+
+    func rawInbox() -> [RawTask] {
+        rawTasks.filter { !$0.isConvertedToBlock }.sorted { $0.createdAt > $1.createdAt }
     }
 
     func rawTasks(for project: Project) -> [RawTask] {
         rawTasks.filter { $0.projectId == project.id && !$0.isConvertedToBlock }.sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func markRawTaskConverted(_ id: UUID) {
+        guard let index = rawTasks.firstIndex(where: { $0.id == id }) else { return }
+        rawTasks[index].isConvertedToBlock = true
+        save(rawTasks, key: rawTasksKey)
     }
 
     func addLog(project: Project, title: String, content: String, focusLevel: Int? = nil, blocker: String = "", nextAdjustment: String = "") {
@@ -454,6 +517,14 @@ final class ProjectStore: ObservableObject {
 
     func activeAdjustment(for project: Project) -> NextAdjustment? {
         adjustments.filter { $0.projectId == project.id && $0.isActive }.sorted { $0.createdAt > $1.createdAt }.first
+    }
+
+    func activeAdjustments() -> [(Project, NextAdjustment)] {
+        adjustments.filter(\.isActive).compactMap { adjustment in
+            guard let project = project(id: adjustment.projectId) else { return nil }
+            return (project, adjustment)
+        }
+        .sorted { $0.1.createdAt > $1.1.createdAt }
     }
 
     func blocks(for project: Project) -> [WorkBlock] {
@@ -530,7 +601,9 @@ final class TimeBlockStore: ObservableObject {
 
     func visibleBlocks(for date: Date, viewType: BoardViewType) -> [WorkBlock] {
         let interval = DateHelper.interval(for: date, viewType: viewType)
-        return Self.loadPersistedBlocks().filter { interval.intersects(DateInterval(start: $0.startAt, end: max($0.endAt, $0.startAt.addingTimeInterval(60)))) }.sorted { $0.startAt < $1.startAt }
+        return Self.loadPersistedBlocks()
+            .filter { interval.intersects(DateInterval(start: $0.startAt, end: max($0.endAt, $0.startAt.addingTimeInterval(60)))) }
+            .sorted { $0.startAt < $1.startAt }
     }
 
     func create(title: String, category: ScheduleCategory, project: Project?, memo: String, startAt: Date, endAt: Date) {
@@ -569,7 +642,7 @@ final class TimeBlockStore: ObservableObject {
     func resizeEnd(_ block: WorkBlock, minutes: Int) {
         update(block, sync: true) {
             $0.endAt = DateHelper.snap(Calendar.current.date(byAdding: .minute, value: minutes, to: $0.endAt) ?? $0.endAt)
-            if $0.endAt <= $0.startAt { $0.endAt = Calendar.current.date(byAdding: .minute, value: 15, to: $0.startAt) ?? $0.endAt }
+            if $0.endAt <= $0.startAt { $0.endAt = Calendar.current.date(byAdding: .minute, value: 10, to: $0.startAt) ?? $0.endAt }
         }
     }
 
@@ -579,6 +652,7 @@ final class TimeBlockStore: ObservableObject {
     func stop(_ block: WorkBlock) { update(block, sync: false) { $0.status = .stopped } }
 
     private func update(_ block: WorkBlock, sync: Bool, edit: (inout WorkBlock) -> Void) {
+        if !blocks.contains(where: { $0.id == block.id }) { blocks.append(block) }
         guard let index = blocks.firstIndex(where: { $0.id == block.id }) else { return }
         edit(&blocks[index])
         if sync { blocks[index].syncStatus = "대기" }
@@ -639,8 +713,16 @@ enum DateHelper {
         let calendar = Calendar.current
         let components = calendar.dateComponents([.hour, .minute], from: date)
         let minute = components.minute ?? 0
-        let snappedMinute = Int((Double(minute) / 15.0).rounded()) * 15
+        let snappedMinute = Int((Double(minute) / 10.0).rounded()) * 10
         return calendar.date(bySettingHour: components.hour ?? 0, minute: min(snappedMinute, 59), second: 0, of: date) ?? date
+    }
+
+    static func startOfDay(_ date: Date) -> Date {
+        Calendar.current.startOfDay(for: date)
+    }
+
+    static func date(on day: Date, minutesFromMidnight: Int) -> Date {
+        Calendar.current.date(byAdding: .minute, value: minutesFromMidnight, to: startOfDay(day)) ?? day
     }
 }
 
@@ -651,45 +733,91 @@ struct ContentView: View {
 
     var body: some View {
         TabView {
-            NavigationStack { DashboardView(eventKitManager: eventKitManager) }
-                .tabItem { Label("Dashboard", systemImage: "square.grid.2x2") }
-            NavigationStack { TimeView(eventKitManager: eventKitManager, calendarSelectionStore: calendarSelectionStore, projectStore: projectStore) }
-                .tabItem { Label("Time", systemImage: "clock") }
+            NavigationStack { DashboardView(eventKitManager: eventKitManager, projectStore: projectStore) }
+                .tabItem { Label("Dashboard", systemImage: "chart.bar.doc.horizontal") }
+            NavigationStack { TodayView(eventKitManager: eventKitManager, calendarSelectionStore: calendarSelectionStore, projectStore: projectStore) }
+                .tabItem { Label("Today", systemImage: "square.and.pencil") }
             NavigationStack { CalendarTabView(eventKitManager: eventKitManager, selectionStore: calendarSelectionStore) }
                 .tabItem { Label("Calendar", systemImage: "calendar") }
             NavigationStack { ProjectsView(selectionStore: calendarSelectionStore, projectStore: projectStore) }
                 .tabItem { Label("Projects", systemImage: "folder") }
-            NavigationStack { RecordView() }
-                .tabItem { Label("Record", systemImage: "book.closed") }
-            NavigationStack { SettingsView(eventKitManager: eventKitManager) }
-                .tabItem { Label("Settings", systemImage: "gearshape") }
+            NavigationStack { LogView(projectStore: projectStore) }
+                .tabItem { Label("Log", systemImage: "book.closed") }
+            NavigationStack { ProfileView(eventKitManager: eventKitManager) }
+                .tabItem { Label("Profile", systemImage: "person.crop.circle") }
         }
     }
 }
 
 struct DashboardView: View {
     @ObservedObject var eventKitManager: EventKitManager
+    @ObservedObject var projectStore: ProjectStore
     @State private var events: [CalendarEvent] = []
     @State private var message: String?
 
+    private var todayBlocks: [WorkBlock] { TimeBlockStore.loadPersistedBlocks().filter { Calendar.current.isDateInToday($0.startAt) } }
+    private var unfinishedBlocks: [WorkBlock] { todayBlocks.filter { $0.status == .planned || $0.status == .inProgress || $0.status == .delayed } }
+    private var activeProjects: [Project] { projectStore.projects.filter { projectStore.summary(for: $0).todayMinutes > 0 || projectStore.rawTasks(for: $0).isEmpty == false } }
+    private var coreBlocks: [WorkBlock] { todayBlocks.filter { $0.status == .planned || $0.status == .inProgress }.prefix(5).map { $0 } }
+
     var body: some View {
         List {
-            if let message { Text(message).foregroundStyle(.secondary) }
-            Section("오늘 일정") {
-                if events.isEmpty { Text("오늘 일정이 없습니다.").foregroundStyle(.secondary) }
-                ForEach(events) { event in
+            Section("오늘 브리핑") {
+                Text(briefingText)
+                    .font(.headline)
+            }
+            Section("오늘 상태 요약") {
+                LabeledContent("Apple Calendar 일정", value: "\(events.count)개")
+                LabeledContent("nouae WorkBlock", value: "\(todayBlocks.count)개")
+                LabeledContent("미완료", value: "\(unfinishedBlocks.count)개")
+                if let message { Text(message).font(.caption).foregroundStyle(.secondary) }
+            }
+            Section("오늘 진행 중 프로젝트") {
+                if activeProjects.isEmpty { Text("오늘 움직이는 프로젝트가 아직 없습니다.").foregroundStyle(.secondary) }
+                ForEach(Array(activeProjects.prefix(5))) { project in
+                    let summary = projectStore.summary(for: project)
                     VStack(alignment: .leading) {
-                        Text(event.title)
-                        Text("\(event.startAt.formatted(date: .omitted, time: .shortened)) - \(event.endAt.formatted(date: .omitted, time: .shortened))")
+                        Text(project.title).font(.headline)
+                        Text("\(project.category.rawValue) · 오늘 \(summary.todayMinutes)분 · RawTask \(projectStore.rawTasks(for: project).count)개")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
             }
+            Section("오늘 핵심 WorkBlock") {
+                if coreBlocks.isEmpty { Text("Today에서 블록을 배치하면 여기에 올라옵니다.").foregroundStyle(.secondary) }
+                ForEach(coreBlocks) { block in WorkBlockSummaryRow(block: block) }
+            }
+            Section("미완료 작업 요약") {
+                LabeledContent("RawTask Inbox", value: "\(projectStore.rawInbox().count)개")
+                LabeledContent("Delayed", value: "\(TimeBlockStore.loadPersistedBlocks().filter { $0.status == .delayed }.count)개")
+            }
+            Section("최근 Next Adjustment") {
+                let adjustments = projectStore.activeAdjustments()
+                if adjustments.isEmpty { Text("최근 조정 메모가 없습니다.").foregroundStyle(.secondary) }
+                ForEach(Array(adjustments.prefix(5)), id: \.1.id) { project, adjustment in
+                    VStack(alignment: .leading) {
+                        Text(project.title).font(.headline)
+                        Text(adjustment.content).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Section("Weather Context") {
+                Text("외부 API는 사용하지 않습니다. 날씨 판단이 필요하면 Apple Weather 앱을 확인하고 Today 배치에 반영하세요.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Section("Closing Report Preview") {
+                Text("완료 \(todayBlocks.filter { $0.status == .completed }.count)개 · 미룸 \(todayBlocks.filter { $0.status == .delayed }.count)개 · 중단 \(todayBlocks.filter { $0.status == .stopped }.count)개")
+            }
         }
         .navigationTitle("Dashboard")
         .task { await load() }
         .toolbar { Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") } }
+    }
+
+    private var briefingText: String {
+        "오늘은 RawTask를 Today에 쏟아내고, 핵심 WorkBlock \(coreBlocks.count)개를 시간 위에 고정하는 날입니다."
     }
 
     private func load() async {
@@ -698,22 +826,24 @@ struct DashboardView: View {
     }
 }
 
-struct TimeView: View {
+struct TodayView: View {
     @StateObject private var store: TimeBlockStore
     @ObservedObject var projectStore: ProjectStore
-    @State private var viewType: BoardViewType = .day
+    @AppStorage("stable.today.layoutMode") private var layoutModeRaw = ""
+    @State private var boardViewType: BoardViewType = .day
     @State private var selectedDate = Date()
-    @State private var title = ""
-    @State private var memo = ""
-    @State private var category: ScheduleCategory = .work
-    @State private var projectId: UUID?
-    @State private var startAt = Date()
-    @State private var endAt = Calendar.current.date(byAdding: .minute, value: 30, to: Date()) ?? Date()
+    @State private var rawTitle = ""
+    @State private var rawMemo = ""
+    @State private var rawCategory: ScheduleCategory = .work
+    @State private var rawProjectId: UUID?
 
-    private var visibleBlocks: [WorkBlock] { store.visibleBlocks(for: selectedDate, viewType: viewType) }
-    private var activeBlock: WorkBlock? { visibleBlocks.first { $0.status == .inProgress } }
-    private var startSuggestions: [WorkBlock] { visibleBlocks.filter { $0.status == .planned && Date() >= $0.startAt && Date() < $0.endAt } }
-    private var closingSuggestions: [WorkBlock] { visibleBlocks.filter { $0.status == .inProgress && Date() >= $0.endAt } }
+    private var layoutMode: TodayLayoutMode { TodayLayoutMode(rawValue: layoutModeRaw) ?? TodayLayoutMode.defaultMode }
+    private var visibleBlocks: [WorkBlock] { store.visibleBlocks(for: selectedDate, viewType: boardViewType) }
+    private var yesterdayUnfinished: [WorkBlock] {
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+        return TimeBlockStore.loadPersistedBlocks().filter { Calendar.current.isDate($0.startAt, inSameDayAs: yesterday) && $0.status != .completed }
+    }
+    private var delayedTasks: [WorkBlock] { TimeBlockStore.loadPersistedBlocks().filter { $0.status == .delayed }.sorted { $0.startAt > $1.startAt } }
 
     init(eventKitManager: EventKitManager, calendarSelectionStore: CalendarSelectionStore, projectStore: ProjectStore) {
         _store = StateObject(wrappedValue: TimeBlockStore(eventKitManager: eventKitManager, calendarSelectionStore: calendarSelectionStore))
@@ -721,123 +851,351 @@ struct TimeView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Picker("View", selection: $viewType) {
-                Text("Week").tag(BoardViewType.week)
-                Text("Day").tag(BoardViewType.day)
+        GeometryReader { proxy in
+            if layoutMode == .horizontalSplit {
+                HStack(spacing: 0) {
+                    ScrollView { leftPanel.padding() }
+                        .frame(width: max(330, proxy.size.width * 0.34))
+                    Divider()
+                    ScrollView { rightPanel.padding() }
+                }
+            } else {
+                ScrollView {
+                    VStack(spacing: 14) {
+                        leftPanel
+                        rightPanel
+                    }
+                    .padding()
+                }
+            }
+        }
+        .navigationTitle("Today")
+        .toolbar {
+            Picker("Layout", selection: Binding(get: { layoutMode }, set: { layoutModeRaw = $0.rawValue })) {
+                ForEach(TodayLayoutMode.allCases) { mode in Text(mode.title).tag(mode) }
             }
             .pickerStyle(.segmented)
-            .padding(.horizontal)
-            .padding(.top, 8)
+            .frame(width: 220)
+        }
+    }
 
-            Form {
-                Section("빠른 입력") {
-                    TextField("일정 제목", text: $title)
-                    TextField("메모", text: $memo)
-                    Picker("카테고리", selection: $category) {
-                        ForEach(ScheduleCategory.allCases) { item in Label(item.rawValue, systemImage: item.symbol).tag(item) }
-                    }
-                    Picker("프로젝트", selection: $projectId) {
-                        Text("프로젝트 없음").tag(UUID?.none)
-                        ForEach(projectStore.projects(for: category)) { project in Text(project.title).tag(UUID?.some(project.id)) }
-                    }
-                    DatePicker("시작", selection: $startAt, displayedComponents: [.date, .hourAndMinute])
-                    DatePicker("종료", selection: $endAt, displayedComponents: [.date, .hourAndMinute])
-                    Button("타임블록 추가") {
-                        store.create(title: title, category: category, project: projectStore.project(id: projectId), memo: memo, startAt: startAt, endAt: endAt)
-                        title = ""
-                        memo = ""
-                    }
-                }
-            }
-            .frame(maxHeight: 380)
-
-            if let message = store.message { Text(message).font(.caption).foregroundStyle(.red).padding(.horizontal) }
-
-            ScrollView {
+    private var leftPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            GroupBox("Quick Capture") {
                 VStack(alignment: .leading, spacing: 10) {
-                    if let activeBlock { RunningWorkPanel(block: activeBlock, store: store) }
-                    ForEach(startSuggestions) { block in StartSuggestionView(block: block, store: store) }
-                    ForEach(closingSuggestions) { block in ClosingSuggestionView(block: block, store: store) }
-                    if viewType == .day { DayTimeBoard(blocks: visibleBlocks, store: store) } else { WeekBlockList(blocks: visibleBlocks, store: store) }
+                    TextField("머릿속 작업을 빠르게 입력", text: $rawTitle)
+                    TextField("메모", text: $rawMemo, axis: .vertical)
+                    Picker("Category", selection: $rawCategory) {
+                        ForEach(ScheduleCategory.allCases) { category in Text(category.rawValue).tag(category) }
+                    }
+                    Picker("Project", selection: $rawProjectId) {
+                        Text("프로젝트 없음").tag(UUID?.none)
+                        ForEach(projectStore.projects(for: rawCategory)) { project in Text(project.title).tag(UUID?.some(project.id)) }
+                    }
+                    Button { addRawTask() } label: { Label("RawTask 추가", systemImage: "plus") }
+                        .buttonStyle(.borderedProminent)
                 }
-                .padding()
+            }
+
+            GroupBox("RawTask Inbox") {
+                VStack(alignment: .leading, spacing: 8) {
+                    if projectStore.rawInbox().isEmpty { Text("입력된 RawTask가 없습니다.").foregroundStyle(.secondary) }
+                    ForEach(projectStore.rawInbox()) { task in
+                        RawTaskCard(task: task, project: projectStore.project(id: task.projectId))
+                            .draggable(task.id.uuidString)
+                    }
+                }
+            }
+
+            GroupBox("Yesterday Unfinished") {
+                VStack(alignment: .leading, spacing: 8) {
+                    if yesterdayUnfinished.isEmpty { Text("어제 미완료 블록이 없습니다.").foregroundStyle(.secondary) }
+                    ForEach(yesterdayUnfinished) { WorkBlockSummaryRow(block: $0) }
+                }
+            }
+
+            GroupBox("Delayed Tasks") {
+                VStack(alignment: .leading, spacing: 8) {
+                    if delayedTasks.isEmpty { Text("미룬 작업이 없습니다.").foregroundStyle(.secondary) }
+                    ForEach(delayedTasks.prefix(8)) { WorkBlockSummaryRow(block: $0) }
+                }
             }
         }
-        .navigationTitle("Time")
-        .toolbar {
-            Button { selectedDate = Calendar.current.date(byAdding: .day, value: -1, to: selectedDate) ?? selectedDate } label: { Image(systemName: "chevron.left") }
-            Button { selectedDate = Date() } label: { Image(systemName: "dot.scope") }
-            Button { selectedDate = Calendar.current.date(byAdding: .day, value: 1, to: selectedDate) ?? selectedDate } label: { Image(systemName: "chevron.right") }
+    }
+
+    private var rightPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            GroupBox("Calendar Board") {
+                VStack(spacing: 10) {
+                    HStack {
+                        Button { moveDate(-1) } label: { Image(systemName: "chevron.left") }
+                            .buttonStyle(.bordered)
+                        Spacer()
+                        Text(boardTitle).font(.headline)
+                        Spacer()
+                        Button { moveDate(1) } label: { Image(systemName: "chevron.right") }
+                            .buttonStyle(.bordered)
+                    }
+                    Picker("View", selection: $boardViewType) {
+                        Text("Day").tag(BoardViewType.day)
+                        Text("Week").tag(BoardViewType.week)
+                        Text("Month").tag(BoardViewType.month)
+                    }
+                    .pickerStyle(.segmented)
+
+                    switch boardViewType {
+                    case .day:
+                        TodayDayBoard(blocks: visibleBlocks, selectedDate: selectedDate, store: store, onDropTask: placeRawTask)
+                    case .week:
+                        TodayWeekBoard(blocks: visibleBlocks, selectedDate: selectedDate, store: store, onDropTask: placeRawTask)
+                    case .month:
+                        TodayMonthBoard(blocks: visibleBlocks, selectedDate: selectedDate, onDropTask: placeRawTask)
+                    case .year:
+                        EmptyView()
+                    }
+                }
+            }
+
+            GroupBox("WorkBlock Timeline") {
+                VStack(alignment: .leading, spacing: 8) {
+                    if visibleBlocks.isEmpty { Text("배치된 WorkBlock이 없습니다.").foregroundStyle(.secondary) }
+                    ForEach(visibleBlocks) { block in WorkBlockRow(block: block, store: store) }
+                }
+            }
+
+            if let message = store.message {
+                Text(message).font(.caption).foregroundStyle(.red)
+            }
         }
     }
-}
 
-struct RunningWorkPanel: View {
-    let block: WorkBlock
-    @ObservedObject var store: TimeBlockStore
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("진행중").font(.caption).foregroundStyle(.secondary)
-            Text(block.title).font(.headline)
-            Text("남은 시간 \(block.remainingSeconds / 60)분")
-            if let projectTitle = block.projectTitle { Text("프로젝트: \(projectTitle)").font(.caption) }
-            if !block.memo.isEmpty { Text(block.memo).font(.caption).foregroundStyle(.secondary) }
-            HStack { Button("완료") { store.complete(block) }; Button("미룸") { store.delay(block) }; Button("중단") { store.stop(block) } }
-                .buttonStyle(.bordered)
+    private var boardTitle: String {
+        switch boardViewType {
+        case .day: return selectedDate.formatted(date: .abbreviated, time: .omitted)
+        case .week:
+            let interval = DateHelper.interval(for: selectedDate, viewType: .week)
+            return "\(interval.start.formatted(date: .abbreviated, time: .omitted)) - \(interval.end.addingTimeInterval(-1).formatted(date: .abbreviated, time: .omitted))"
+        case .month: return selectedDate.formatted(.dateTime.year().month(.wide))
+        case .year: return selectedDate.formatted(.dateTime.year())
         }
-        .padding()
-        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func addRawTask() {
+        projectStore.addRawTask(title: rawTitle, memo: rawMemo, category: rawCategory, projectId: rawProjectId)
+        rawTitle = ""
+        rawMemo = ""
+    }
+
+    private func moveDate(_ value: Int) {
+        let component: Calendar.Component = boardViewType == .month ? .month : boardViewType == .week ? .weekOfYear : .day
+        selectedDate = Calendar.current.date(byAdding: component, value: value, to: selectedDate) ?? selectedDate
+    }
+
+    private func placeRawTask(_ taskId: String, startAt: Date) {
+        guard let uuid = UUID(uuidString: taskId), let task = projectStore.task(id: uuid) else { return }
+        let project = projectStore.project(id: task.projectId)
+        let endAt = Calendar.current.date(byAdding: .minute, value: boardViewType == .month ? 60 : 30, to: startAt) ?? startAt
+        store.create(title: task.title, category: task.category, project: project, memo: task.memo, startAt: startAt, endAt: endAt)
+        projectStore.markRawTaskConverted(uuid)
     }
 }
 
-struct StartSuggestionView: View {
-    let block: WorkBlock
-    @ObservedObject var store: TimeBlockStore
-    var body: some View {
-        HStack { Text("시작할 시간입니다 · \(block.title)").font(.headline); Spacer(); Button("시작") { store.start(block) }.buttonStyle(.borderedProminent) }
-            .padding()
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10))
-    }
-}
+struct RawTaskCard: View {
+    let task: RawTask
+    let project: Project?
 
-struct ClosingSuggestionView: View {
-    let block: WorkBlock
-    @ObservedObject var store: TimeBlockStore
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("종료 시간이 지났습니다").font(.caption).foregroundStyle(.secondary)
-            Text(block.title).font(.headline)
-            HStack { Button("완료") { store.complete(block) }; Button("미룸") { store.delay(block) }; Button("중단") { store.stop(block) } }
-                .buttonStyle(.bordered)
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Image(systemName: "line.3.horizontal")
+                    .foregroundStyle(.secondary)
+                Text(task.title).font(.headline)
+                Spacer()
+                Text(task.category.rawValue)
+                    .font(.caption2)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(task.category.color.opacity(0.14), in: Capsule())
+            }
+            if !task.memo.isEmpty { Text(task.memo).font(.caption).foregroundStyle(.secondary) }
+            if let project { Text(project.title).font(.caption2).foregroundStyle(.secondary) }
         }
-        .padding()
-        .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+        .padding(10)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
-struct DayTimeBoard: View {
+struct TodayDayBoard: View {
     let blocks: [WorkBlock]
+    let selectedDate: Date
     @ObservedObject var store: TimeBlockStore
-    private let hourHeight: CGFloat = 64
+    let onDropTask: (String, Date) -> Void
+    private let hourHeight: CGFloat = 68
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             TimeRulerRows(hourHeight: hourHeight)
-            ForEach(blocks) { block in
-                WorkBlockBoardCard(block: block, store: store, hourHeight: hourHeight)
+            ForEach(blocks.filter { Calendar.current.isDate($0.startAt, inSameDayAs: selectedDate) }) { block in
+                EditableWorkBlockCard(block: block, store: store, hourHeight: hourHeight)
                     .padding(.leading, 62)
                     .offset(y: yOffset(block.startAt))
-                    .frame(height: max(46, CGFloat(block.minutes) / 60 * hourHeight))
+                    .frame(height: max(48, CGFloat(block.minutes) / 60 * hourHeight))
             }
         }
         .frame(height: CGFloat(24) * hourHeight)
+        .dropDestination(for: String.self) { ids, location in
+            let startAt = date(for: location.y)
+            ids.forEach { onDropTask($0, startAt) }
+            return !ids.isEmpty
+        }
     }
 
     private func yOffset(_ date: Date) -> CGFloat {
-        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
-        return CGFloat(components.hour ?? 0) * hourHeight + CGFloat(components.minute ?? 0) / 60 * hourHeight
+        let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return CGFloat(c.hour ?? 0) * hourHeight + CGFloat(c.minute ?? 0) / 60 * hourHeight
+    }
+
+    private func date(for y: CGFloat) -> Date {
+        let rawMinutes = max(0, min(24 * 60 - 10, Int((y / hourHeight) * 60)))
+        let snapped = Int((Double(rawMinutes) / 10.0).rounded()) * 10
+        return DateHelper.date(on: selectedDate, minutesFromMidnight: snapped)
+    }
+}
+
+struct TodayWeekBoard: View {
+    let blocks: [WorkBlock]
+    let selectedDate: Date
+    @ObservedObject var store: TimeBlockStore
+    let onDropTask: (String, Date) -> Void
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 7)
+
+    private var weekDays: [Date] {
+        let start = Calendar.current.dateInterval(of: .weekOfYear, for: selectedDate)?.start ?? selectedDate
+        return (0..<7).compactMap { Calendar.current.date(byAdding: .day, value: $0, to: start) }
+    }
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            ForEach(weekDays, id: \.self) { day in
+                TodayWeekDayColumn(day: day, blocks: blocks.filter { Calendar.current.isDate($0.startAt, inSameDayAs: day) }, store: store, onDropTask: onDropTask)
+            }
+        }
+    }
+}
+
+struct TodayWeekDayColumn: View {
+    let day: Date
+    let blocks: [WorkBlock]
+    @ObservedObject var store: TimeBlockStore
+    let onDropTask: (String, Date) -> Void
+    private let hourHeight: CGFloat = 28
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(day.formatted(.dateTime.weekday(.abbreviated))).font(.caption2).foregroundStyle(.secondary)
+            Text(day.formatted(.dateTime.day())).font(.headline)
+            ZStack(alignment: .topLeading) {
+                TimeRulerRows(hourHeight: hourHeight)
+                    .opacity(0.45)
+                ForEach(blocks) { block in
+                    MiniEditableWorkBlock(block: block, store: store, hourHeight: hourHeight)
+                        .padding(.leading, 28)
+                        .offset(y: yOffset(block.startAt))
+                        .frame(height: max(26, CGFloat(block.minutes) / 60 * hourHeight))
+                }
+            }
+            .frame(height: CGFloat(24) * hourHeight)
+            .dropDestination(for: String.self) { ids, location in
+                let startAt = date(for: location.y)
+                ids.forEach { onDropTask($0, startAt) }
+                return !ids.isEmpty
+            }
+        }
+        .padding(8)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func yOffset(_ date: Date) -> CGFloat {
+        let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return CGFloat(c.hour ?? 0) * hourHeight + CGFloat(c.minute ?? 0) / 60 * hourHeight
+    }
+
+    private func date(for y: CGFloat) -> Date {
+        let rawMinutes = max(0, min(24 * 60 - 10, Int((y / hourHeight) * 60)))
+        let snapped = Int((Double(rawMinutes) / 10.0).rounded()) * 10
+        return DateHelper.date(on: day, minutesFromMidnight: snapped)
+    }
+}
+
+struct TodayMonthBoard: View {
+    let blocks: [WorkBlock]
+    let selectedDate: Date
+    let onDropTask: (String, Date) -> Void
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
+
+    private var cells: [Date?] {
+        let calendar = Calendar.current
+        guard let month = calendar.dateInterval(of: .month, for: selectedDate), let range = calendar.range(of: .day, in: .month, for: selectedDate) else { return [] }
+        let first = month.start
+        let leading = (calendar.component(.weekday, from: first) - calendar.firstWeekday + 7) % 7
+        let dates = range.compactMap { calendar.date(byAdding: .day, value: $0 - 1, to: first) }
+        return Array(repeating: nil, count: leading) + dates
+    }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            CalendarWeekdayHeader()
+            LazyVGrid(columns: columns, spacing: 6) {
+                ForEach(Array(cells.enumerated()), id: \.offset) { _, date in
+                    TodayMonthCell(date: date, blocks: date.map(blocksForDay) ?? [], onDropTask: onDropTask)
+                }
+            }
+        }
+    }
+
+    private func blocksForDay(_ day: Date) -> [WorkBlock] {
+        blocks.filter { Calendar.current.isDate($0.startAt, inSameDayAs: day) }
+    }
+}
+
+struct TodayMonthCell: View {
+    let date: Date?
+    let blocks: [WorkBlock]
+    let onDropTask: (String, Date) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let date {
+                Text(date.formatted(.dateTime.day()))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Calendar.current.isDateInToday(date) ? Color.accentColor : Color.primary)
+                ForEach(blocks.prefix(3)) { block in
+                    Text(block.title)
+                        .font(.caption2)
+                        .lineLimit(1)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(block.category.color.opacity(0.14), in: RoundedRectangle(cornerRadius: 5))
+                }
+                if blocks.count > 3 { Text("+\(blocks.count - 3)").font(.caption2).foregroundStyle(.secondary) }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(6)
+        .frame(minHeight: 112, alignment: .topLeading)
+        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 8))
+        .dropDestination(for: String.self) { ids, _ in
+            guard let date else { return false }
+            let start = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: date) ?? date
+            ids.forEach { onDropTask($0, start) }
+            return !ids.isEmpty
+        }
+    }
+
+    private var backgroundColor: Color {
+        guard let date else { return Color.clear }
+        return Calendar.current.isDateInToday(date) ? Color.accentColor.opacity(0.12) : Color(.secondarySystemGroupedBackground)
     }
 }
 
@@ -847,7 +1205,10 @@ struct TimeRulerRows: View {
         VStack(spacing: 0) {
             ForEach(0..<24, id: \.self) { hour in
                 HStack(alignment: .top) {
-                    Text(String(format: "%02d:00", hour)).font(.caption2).foregroundStyle(.secondary).frame(width: 50, alignment: .trailing)
+                    Text(String(format: "%02d:00", hour))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 50, alignment: .trailing)
                     Rectangle().fill(Color.secondary.opacity(0.2)).frame(height: 1)
                 }
                 .frame(height: hourHeight, alignment: .top)
@@ -856,46 +1217,91 @@ struct TimeRulerRows: View {
     }
 }
 
-struct WorkBlockBoardCard: View {
+struct EditableWorkBlockCard: View {
     let block: WorkBlock
     @ObservedObject var store: TimeBlockStore
     let hourHeight: CGFloat
+    @GestureState private var moveOffset: CGFloat = 0
+    @GestureState private var topResizeOffset: CGFloat = 0
+    @GestureState private var bottomResizeOffset: CGFloat = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Capsule().fill(Color.white.opacity(0.75)).frame(width: 42, height: 5).gesture(resizeGesture(isStart: true))
+            Capsule().fill(Color.white.opacity(0.8)).frame(width: 44, height: 5).gesture(resizeGesture(isStart: true))
             HStack { Text(block.title).font(.headline).lineLimit(1); Spacer(); Text(block.status.title).font(.caption2) }
             Text("\(block.startAt.formatted(date: .omitted, time: .shortened)) - \(block.endAt.formatted(date: .omitted, time: .shortened)) · \(block.syncStatus)").font(.caption2)
             if let projectTitle = block.projectTitle { Text(projectTitle).font(.caption2) }
             Spacer(minLength: 0)
-            Capsule().fill(Color.white.opacity(0.75)).frame(width: 42, height: 5).gesture(resizeGesture(isStart: false))
+            Capsule().fill(Color.white.opacity(0.8)).frame(width: 44, height: 5).gesture(resizeGesture(isStart: false))
         }
         .padding(8)
         .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, minHeight: adjustedHeight, alignment: .topLeading)
         .background(block.category.color.gradient, in: RoundedRectangle(cornerRadius: 8))
+        .offset(y: moveOffset + topResizeOffset)
+        .animation(.spring(response: 0.22, dampingFraction: 0.86), value: moveOffset)
+        .animation(.spring(response: 0.22, dampingFraction: 0.86), value: topResizeOffset)
         .gesture(moveGesture)
     }
 
+    private var adjustedHeight: CGFloat {
+        max(42, CGFloat(block.minutes) / 60 * hourHeight - topResizeOffset + bottomResizeOffset)
+    }
+
     private var moveGesture: some Gesture {
-        DragGesture().onEnded { value in store.move(block, minutes: snappedMinutes(for: value.translation.height)) }
+        DragGesture()
+            .updating($moveOffset) { value, state, _ in state = value.translation.height }
+            .onEnded { value in store.move(block, minutes: snappedMinutes(for: value.translation.height)) }
     }
 
     private func resizeGesture(isStart: Bool) -> some Gesture {
-        DragGesture().onEnded { value in
-            let minutes = snappedMinutes(for: value.translation.height)
-            if isStart { store.resizeStart(block, minutes: minutes) } else { store.resizeEnd(block, minutes: minutes) }
-        }
+        DragGesture()
+            .updating(isStart ? $topResizeOffset : $bottomResizeOffset) { value, state, _ in state = value.translation.height }
+            .onEnded { value in
+                let minutes = snappedMinutes(for: value.translation.height)
+                if isStart { store.resizeStart(block, minutes: minutes) } else { store.resizeEnd(block, minutes: minutes) }
+            }
     }
 
     private func snappedMinutes(for translation: CGFloat) -> Int {
-        Int(((translation / hourHeight * 60) / 15).rounded()) * 15
+        Int(((translation / hourHeight * 60) / 10).rounded()) * 10
     }
 }
 
-struct WeekBlockList: View {
-    let blocks: [WorkBlock]
+struct MiniEditableWorkBlock: View {
+    let block: WorkBlock
     @ObservedObject var store: TimeBlockStore
-    var body: some View { LazyVStack(spacing: 8) { ForEach(blocks) { WorkBlockRow(block: $0, store: store) } } }
+    let hourHeight: CGFloat
+    @GestureState private var offset: CGFloat = 0
+
+    var body: some View {
+        Text(block.title)
+            .font(.caption2.weight(.semibold))
+            .lineLimit(2)
+            .padding(5)
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(block.category.color, in: RoundedRectangle(cornerRadius: 5))
+            .offset(y: offset)
+            .gesture(
+                DragGesture()
+                    .updating($offset) { value, state, _ in state = value.translation.height }
+                    .onEnded { value in store.move(block, minutes: Int(((value.translation.height / hourHeight * 60) / 10).rounded()) * 10) }
+            )
+    }
+}
+
+struct WorkBlockSummaryRow: View {
+    let block: WorkBlock
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack { Text(block.title).font(.headline); Spacer(); Text(block.status.title).font(.caption) }
+            Text("\(block.startAt.formatted(date: .abbreviated, time: .shortened)) - \(block.endAt.formatted(date: .omitted, time: .shortened))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let projectTitle = block.projectTitle { Text(projectTitle).font(.caption2).foregroundStyle(.secondary) }
+        }
+    }
 }
 
 struct WorkBlockRow: View {
@@ -1271,13 +1677,13 @@ struct ProjectDetailView: View {
             Section("Today Work") {
                 let blocks = projectStore.blocks(for: project)
                 if blocks.isEmpty { Text("연결된 WorkBlock이 없습니다.").foregroundStyle(.secondary) }
-                ForEach(blocks) { block in VStack(alignment: .leading) { Text("\(block.title) · \(block.status.title)"); Text("\(block.startAt.formatted(date: .abbreviated, time: .shortened)) - \(block.endAt.formatted(date: .omitted, time: .shortened))").font(.caption).foregroundStyle(.secondary) } }
+                ForEach(blocks) { block in WorkBlockSummaryRow(block: block) }
             }
             Section("RawTask Inbox") {
                 TextField("작업", text: $taskTitle)
                 TextField("메모", text: $taskMemo)
-                Button("RawTask 추가") { projectStore.addRawTask(project: project, title: taskTitle, memo: taskMemo); taskTitle = ""; taskMemo = "" }
-                ForEach(projectStore.rawTasks(for: project)) { task in VStack(alignment: .leading) { Text(task.title); if !task.memo.isEmpty { Text(task.memo).font(.caption).foregroundStyle(.secondary) } } }
+                Button("RawTask 추가") { projectStore.addRawTask(title: taskTitle, memo: taskMemo, category: project.category, projectId: project.id); taskTitle = ""; taskMemo = "" }
+                ForEach(projectStore.rawTasks(for: project)) { task in RawTaskCard(task: task, project: project) }
             }
             Section("Recent Logs") {
                 TextField("로그 제목", text: $logTitle)
@@ -1286,7 +1692,7 @@ struct ProjectDetailView: View {
                 TextField("막힌 원인", text: $blocker)
                 TextField("다음 조정", text: $nextAdjustment)
                 Button("로그 작성") { projectStore.addLog(project: project, title: logTitle, content: logContent, focusLevel: focusLevel, blocker: blocker, nextAdjustment: nextAdjustment); logTitle = ""; logContent = ""; blocker = ""; nextAdjustment = ""; focusLevel = 3 }
-                ForEach(projectStore.logs(for: project)) { log in VStack(alignment: .leading) { Text(log.title).font(.headline); Text(log.content).foregroundStyle(.secondary); if let focus = log.focusLevel { Text("집중도 \(focus)/5").font(.caption2) }; if !log.blocker.isEmpty { Text("막힌 원인: \(log.blocker)").font(.caption2) }; if !log.nextAdjustment.isEmpty { Text("다음 조정: \(log.nextAdjustment)").font(.caption2) } } }
+                ForEach(projectStore.logs(for: project)) { log in LogRow(log: log, projectTitle: project.title) }
             }
             Section("Next Adjustment") {
                 TextField("다음 조정", text: $adjustment, axis: .vertical)
@@ -1299,20 +1705,53 @@ struct ProjectDetailView: View {
     }
 }
 
-struct RecordView: View {
-    var body: some View { List { Text("Record 탭은 다음 단계에서 Closing Report와 하루 기록으로 확장합니다.").foregroundStyle(.secondary) }.navigationTitle("Record") }
+struct LogView: View {
+    @ObservedObject var projectStore: ProjectStore
+    var body: some View {
+        List {
+            Section("최근 로그") {
+                if projectStore.logs.isEmpty { Text("작성된 로그가 없습니다.").foregroundStyle(.secondary) }
+                ForEach(Array(projectStore.logs.sorted { $0.createdAt > $1.createdAt }.prefix(30))) { log in
+                    LogRow(log: log, projectTitle: projectStore.project(id: log.projectId)?.title ?? "Project")
+                }
+            }
+            Section("Closing Report Preview") {
+                let todayBlocks = TimeBlockStore.loadPersistedBlocks().filter { Calendar.current.isDateInToday($0.startAt) }
+                LabeledContent("완료", value: "\(todayBlocks.filter { $0.status == .completed }.count)개")
+                LabeledContent("미룸", value: "\(todayBlocks.filter { $0.status == .delayed }.count)개")
+                LabeledContent("중단", value: "\(todayBlocks.filter { $0.status == .stopped }.count)개")
+            }
+        }
+        .navigationTitle("Log")
+    }
 }
 
-struct SettingsView: View {
+struct LogRow: View {
+    let log: ProjectLog
+    let projectTitle: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(log.title).font(.headline)
+            Text(projectTitle).font(.caption).foregroundStyle(.secondary)
+            if !log.content.isEmpty { Text(log.content).foregroundStyle(.secondary) }
+            if let focus = log.focusLevel { Text("집중도 \(focus)/5").font(.caption2) }
+            if !log.blocker.isEmpty { Text("막힌 원인: \(log.blocker)").font(.caption2) }
+            if !log.nextAdjustment.isEmpty { Text("다음 조정: \(log.nextAdjustment)").font(.caption2) }
+        }
+    }
+}
+
+struct ProfileView: View {
     @ObservedObject var eventKitManager: EventKitManager
     @State private var message: String?
     var body: some View {
         List {
             Section("권한 상태") { LabeledContent("캘린더", value: eventKitManager.calendarStatusText); LabeledContent("미리알림", value: eventKitManager.remindersStatusText) }
             Section { Button("캘린더 권한 요청") { Task { await requestCalendar() } }; Button("미리알림 권한 요청") { Task { await requestReminders() } } }
+            Section("시스템") { Text("서버, 로그인, 외부 API 없이 iPad 안에서 Apple Calendar/Reminders와 연결됩니다.").foregroundStyle(.secondary) }
             if let message { Text(message).foregroundStyle(.secondary) }
         }
-        .navigationTitle("Settings")
+        .navigationTitle("Profile")
     }
     private func requestCalendar() async { do { try await eventKitManager.requestCalendarAccess(); message = "캘린더 권한이 허용되었습니다." } catch { message = error.localizedDescription } }
     private func requestReminders() async { do { try await eventKitManager.requestRemindersAccess(); message = "미리알림 권한이 허용되었습니다." } catch { message = error.localizedDescription } }
