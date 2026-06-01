@@ -54,7 +54,7 @@ final class CalendarSyncManager: ObservableObject {
         try? modelContext.save()
 
         pendingSyncTasks[block.id] = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
             guard !Task.isCancelled else { return }
             await self?.syncWorkBlock(block)
         }
