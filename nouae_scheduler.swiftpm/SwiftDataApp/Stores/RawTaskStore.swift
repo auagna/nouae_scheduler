@@ -29,6 +29,26 @@ final class RawTaskStore: ObservableObject {
         return task
     }
 
+    @discardableResult
+    func importReminder(
+        title: String,
+        reminderIdentifier: String,
+        scheduledAt: Date?
+    ) throws -> RawTask {
+        if let task = try findTask(reminderIdentifier: reminderIdentifier) {
+            task.title = title
+            task.scheduledAt = scheduledAt
+            task.syncState = .synced
+            try save()
+            return task
+        }
+        return try createRawTask(
+            title: title,
+            reminderIdentifier: reminderIdentifier,
+            scheduledAt: scheduledAt
+        )
+    }
+
     func assignProject(_ task: RawTask, projectId: UUID?) throws {
         task.projectId = projectId
         task.syncState = .pending
@@ -79,6 +99,13 @@ final class RawTaskStore: ObservableObject {
     func findTask(id: UUID) throws -> RawTask? {
         let descriptor = FetchDescriptor<RawTask>()
         return try modelContext.fetch(descriptor).first { $0.id == id }
+    }
+
+    func findTask(reminderIdentifier: String) throws -> RawTask? {
+        let descriptor = FetchDescriptor<RawTask>()
+        return try modelContext.fetch(descriptor).first {
+            $0.reminderIdentifier == reminderIdentifier
+        }
     }
 
     private func save() throws {
