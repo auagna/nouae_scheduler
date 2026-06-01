@@ -9,7 +9,7 @@ let package = Package(
     ],
     products: [
         .iOSApplication(
-            name: "nou ae Scheduler",
+            name: "nou ae",
             targets: ["AppModule"],
             bundleIdentifier: "com.auagna.nouae-scheduler",
             teamIdentifier: "",
@@ -33,7 +33,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "AppModule",
-            path: "StableApp"
+            path: "SwiftDataApp"
         )
     ]
 )
