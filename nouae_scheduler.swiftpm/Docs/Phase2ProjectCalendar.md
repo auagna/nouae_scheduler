@@ -2,6 +2,12 @@
 
 Phase 2 adds Apple Calendar creation for Projects. Reminder sync and WorkBlock event sync remain excluded.
 
+## Load crash hotfix
+
+Phase 2 now uses a separate bundle identifier: `com.auagna.nouae-scheduler.phase2`.
+
+`Project.syncStateRawValue` also declares a persisted default value. This keeps Phase 2 isolated from older Phase 1 SwiftData files and makes new Project records migration-safe.
+
 ## Active structure additions
 
 ```text
@@ -25,6 +31,7 @@ Modified files:
 - `Stores/ProjectStore.swift`
 - `App.swift`
 - `ContentView.swift`
+- `Package.swift`
 
 ## Implemented rules
 
@@ -56,23 +63,31 @@ Modified files:
 6. Add `Views/ProjectsView.swift`.
 7. Update `ContentView.swift`.
 8. Update `App.swift`.
+9. Update `Package.swift`.
+
+## iPad reload steps
+
+1. Remove the previously downloaded local Playgrounds copy from the iPad Files app.
+2. Download the latest GitHub archive again.
+3. Unzip it once.
+4. Open the new `nouae_scheduler.swiftpm` package in Swift Playgrounds.
+5. Do not overwrite the earlier local copy in place.
 
 ## iPad test scenario
 
-1. Download a fresh copy of the repository and open `nouae_scheduler.swiftpm` in Swift Playgrounds.
-2. Run the app and open `Projects`.
-3. Tap the plus button.
-4. Enter:
+1. Run the newly downloaded package and open `Projects`.
+2. Tap the plus button.
+3. Enter:
    - Project title: `기능사 공부`
    - Type: `Study`
    - Status: `Active`
    - Goal: `실기 시험 대비 루틴 만들기`
-5. Tap `생성` and allow full Calendar access.
-6. Open Apple Calendar and confirm a Calendar named `기능사 공부` exists.
-7. Return to nou ae and confirm the Project card shows a Calendar color dot, linked Calendar title, and `Synced` badge.
-8. Delete the `기능사 공부` Calendar in Apple Calendar.
-9. Return to nou ae, open Projects, and tap the refresh icon.
-10. Confirm the Project moves into the `Archived` section and displays a failed sync badge.
+4. Tap `생성` and allow full Calendar access.
+5. Open Apple Calendar and confirm a Calendar named `기능사 공부` exists.
+6. Return to nou ae and confirm the Project card shows a Calendar color dot, linked Calendar title, and `Synced` badge.
+7. Delete the `기능사 공부` Calendar in Apple Calendar.
+8. Return to nou ae, open Projects, and tap the refresh icon.
+9. Confirm the Project moves into the `Archived` section and displays a failed sync badge.
 
 ## Expected errors
 
@@ -82,8 +97,8 @@ Open iPad Settings and allow Calendar full access for nou ae. Then return to Pro
 ### Calendar source not found
 Open Apple Calendar and confirm an iCloud Calendar account or another writable default Calendar exists.
 
-### Immediate launch crash after upgrading from Phase 1
-`Project` gained a persisted sync-state field. Delete the older local Swift Playgrounds app copy and open a fresh download for this Phase test.
+### Package still crashes while loading
+Verify that the old local package was removed before opening the fresh download. If it still crashes, capture the first visible Swift Playgrounds error line.
 
 ## Deferred to Phase 3+
 
