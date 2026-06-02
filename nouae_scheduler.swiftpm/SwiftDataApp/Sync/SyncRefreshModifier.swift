@@ -1,3 +1,4 @@
+import EventKit
 import SwiftUI
 
 struct SyncRefreshModifier: ViewModifier {
@@ -13,7 +14,13 @@ struct SyncRefreshModifier: ViewModifier {
     }
 
     private func refresh() async {
-        _ = try? await services.reminderSyncManager.importInboxReminders()
-        try? await services.calendarSyncManager.archiveProjectsWithMissingCalendars()
+        services.eventKitManager.refreshAuthorizationStatus()
+        if services.eventKitManager.reminderAuthorizationStatus == .fullAccess {
+            _ = try? await services.reminderSyncManager.importInboxReminders()
+        }
+        if services.eventKitManager.calendarAuthorizationStatus == .fullAccess {
+            try? await services.calendarSyncManager.reconcileLinkedWorkBlocksFromApple()
+            try? await services.calendarSyncManager.archiveProjectsWithMissingCalendars()
+        }
     }
 }
