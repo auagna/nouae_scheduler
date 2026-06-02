@@ -1,3 +1,4 @@
+import Foundation
 import SwiftData
 import SwiftUI
 
@@ -27,7 +28,8 @@ struct DashboardView: View {
                             StatCard(title: "예정", value: snapshot.planned, systemImage: "calendar", tint: .blue)
                             StatCard(title: "진행 중", value: snapshot.inProgress, systemImage: "timer", tint: .orange)
                             StatCard(title: "완료", value: snapshot.completed, systemImage: "checkmark.circle", tint: .green)
-                            StatCard(title: "미룸", value: snapshot.delayedBlocks.count, systemImage: "arrowshape.turn.up.right", tint: .secondary)
+                            StatCard(title: "미룸", value: snapshot.delayedToday, systemImage: "arrowshape.turn.up.right", tint: .secondary)
+                            StatCard(title: "중단", value: snapshot.stoppedToday, systemImage: "stop.circle", tint: .red)
                         }
                     }
                 }
