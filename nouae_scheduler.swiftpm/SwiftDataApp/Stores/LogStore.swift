@@ -30,6 +30,10 @@ final class LogStore: ObservableObject {
             content: content
         )
         modelContext.insert(log)
+        let trimmedAdjustment = nextAdjustment.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedAdjustment.isEmpty {
+            modelContext.insert(NextAdjustment(projectId: projectId, content: trimmedAdjustment))
+        }
         try save()
         return log
     }
@@ -52,7 +56,5 @@ final class LogStore: ObservableObject {
         }
     }
 
-    private func save() throws {
-        try modelContext.save()
-    }
+    private func save() throws { try modelContext.save() }
 }
