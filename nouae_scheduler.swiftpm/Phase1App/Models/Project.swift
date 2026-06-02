@@ -11,7 +11,7 @@ final class Project {
     var calendarIdentifier: String?
     var calendarTitle: String?
     var calendarColorHex: String?
-    var syncStateRawValue: String
+    var syncStateRawValue: String = SyncState.local.rawValue
     var createdAt: Date
     var updatedAt: Date
     var archivedAt: Date?
