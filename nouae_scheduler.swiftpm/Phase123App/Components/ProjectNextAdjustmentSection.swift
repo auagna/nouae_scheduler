@@ -9,7 +9,7 @@ struct ProjectNextAdjustmentSection: View {
 
     var body: some View {
         Section("다음 조정") {
-            ForEach(adjustments.filter { $0.projectId == project.id }) { item in Text(item.content).foregroundStyle(item.isActive ? .primary : .secondary) }
+            ForEach(adjustments.filter { $0.projectId == project.id }) { item in Text(item.content).foregroundStyle(item.isActive ? Color.primary : Color.secondary) }
             HStack { TextField("새 조정사항", text: $content); Button { add() } label: { Image(systemName: "plus.circle.fill") }.disabled(content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
         }
     }
