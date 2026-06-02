@@ -5,6 +5,8 @@ struct DashboardSnapshot {
     let planned: Int
     let inProgress: Int
     let completed: Int
+    let delayedToday: Int
+    let stoppedToday: Int
     let activeProjects: [Project]
     let todayBlocks: [WorkBlock]
     let delayedBlocks: [WorkBlock]
@@ -12,8 +14,7 @@ struct DashboardSnapshot {
     let recentLogs: [ProjectLog]
 
     var closingSummary: String {
-        let delayedText = delayedBlocks.isEmpty ? "미룬 작업은 없습니다." : "미룬 작업은 \(delayedBlocks.count)개입니다."
-        return "오늘 WorkBlock \(todayBlocks.count)개 중 \(completed)개를 완료했습니다. 진행 중 \(inProgress)개, 예정 \(planned)개이며 \(delayedText)"
+        "오늘 WorkBlock \(todayBlocks.count)개 중 \(completed)개를 완료했습니다. 진행 중 \(inProgress)개, 예정 \(planned)개, 미룸 \(delayedToday)개, 중단 \(stoppedToday)개입니다."
     }
 }
 
@@ -32,6 +33,8 @@ final class DashboardStore {
             planned: todayBlocks.filter { $0.executionState == .planned }.count,
             inProgress: todayBlocks.filter { $0.executionState == .inProgress }.count,
             completed: todayBlocks.filter { $0.executionState == .completed }.count,
+            delayedToday: todayBlocks.filter { $0.executionState == .delayed }.count,
+            stoppedToday: todayBlocks.filter { $0.executionState == .stopped }.count,
             activeProjects: projects.filter { $0.status == .active },
             todayBlocks: todayBlocks.sorted { $0.startAt < $1.startAt },
             delayedBlocks: blocks.filter { $0.executionState == .delayed }.sorted { $0.updatedAt > $1.updatedAt },
