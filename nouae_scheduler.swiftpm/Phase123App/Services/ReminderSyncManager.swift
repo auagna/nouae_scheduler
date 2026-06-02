@@ -58,9 +58,9 @@ final class ReminderSyncManager {
     }
 
     func markReminderCompleted(for task: RawTask) async throws {
+        try await eventKit.requireReminderAccess()
         guard let identifier = task.reminderIdentifier,
               let reminder = eventKit.eventStore.calendarItem(withIdentifier: identifier) as? EKReminder else { return }
-        try await eventKit.requireReminderAccess()
         reminder.isCompleted = true
         try eventKit.eventStore.save(reminder, commit: true)
     }
