@@ -8,6 +8,7 @@ final class AppStores: ObservableObject {
     let workBlockStore: WorkBlockStore
     let logStore: LogStore
     let adjustmentStore: NextAdjustmentStore
+    let dashboardStore: DashboardStore
 
     init(context: ModelContext) {
         projectStore = ProjectStore(context: context)
@@ -15,5 +16,6 @@ final class AppStores: ObservableObject {
         workBlockStore = WorkBlockStore(context: context)
         logStore = LogStore(context: context)
         adjustmentStore = NextAdjustmentStore(context: context)
+        dashboardStore = DashboardStore(context: context)
     }
 }
