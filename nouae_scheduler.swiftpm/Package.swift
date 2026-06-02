@@ -4,36 +4,21 @@ import AppleProductTypes
 
 let package = Package(
     name: "nouae_scheduler",
-    platforms: [
-        .iOS("17.0")
-    ],
+    platforms: [.iOS("17.0")],
     products: [
         .iOSApplication(
             name: "nou ae",
             targets: ["AppModule"],
-            bundleIdentifier: "com.auagna.nouae-scheduler.phase2",
+            bundleIdentifier: "com.auagna.nouae-scheduler.phase123",
             teamIdentifier: "",
             displayVersion: "1.0",
-            bundleVersion: "2",
+            bundleVersion: "3",
             appIcon: .placeholder(icon: .calendar),
             accentColor: .presetColor(.blue),
-            supportedDeviceFamilies: [
-                .pad,
-                .phone
-            ],
-            supportedInterfaceOrientations: [
-                .portrait,
-                .landscapeLeft,
-                .landscapeRight,
-                .portraitUpsideDown(.when(deviceFamilies: [.pad]))
-            ],
+            supportedDeviceFamilies: [.pad, .phone],
+            supportedInterfaceOrientations: [.portrait, .landscapeLeft, .landscapeRight, .portraitUpsideDown(.when(deviceFamilies: [.pad]))],
             additionalInfoPlistContentFilePath: "Info.plist"
         )
     ],
-    targets: [
-        .executableTarget(
-            name: "AppModule",
-            path: "Phase1App"
-        )
-    ]
+    targets: [.executableTarget(name: "AppModule", path: "Phase123App")]
 )
