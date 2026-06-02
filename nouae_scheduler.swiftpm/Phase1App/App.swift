@@ -6,6 +6,7 @@ import SwiftUI
 struct NouAEApp: App {
     private let modelContainer: ModelContainer
     @StateObject private var stores: AppStores
+    @StateObject private var services = AppServices()
 
     init() {
         do {
@@ -21,6 +22,7 @@ struct NouAEApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(stores)
+                .environmentObject(services)
         }
         .modelContainer(modelContainer)
     }
