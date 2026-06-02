@@ -14,5 +14,6 @@ struct MVPContentView: View {
             LogView()
                 .tabItem { Label("Log", systemImage: "square.and.pencil") }
         }
+        .modifier(SyncRefreshModifier())
     }
 }
