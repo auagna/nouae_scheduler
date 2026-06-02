@@ -11,10 +11,10 @@ let package = Package(
         .iOSApplication(
             name: "nou ae",
             targets: ["AppModule"],
-            bundleIdentifier: "com.auagna.nouae-scheduler",
+            bundleIdentifier: "com.auagna.nouae-scheduler.phase2",
             teamIdentifier: "",
             displayVersion: "1.0",
-            bundleVersion: "1",
+            bundleVersion: "2",
             appIcon: .placeholder(icon: .calendar),
             accentColor: .presetColor(.blue),
             supportedDeviceFamilies: [
