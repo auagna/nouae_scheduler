@@ -6,6 +6,7 @@ struct WorkBlockCard: View {
     let color: Color
     let pointsPerMinute: CGFloat
     let onChangeTime: (WorkBlock, Date, Date) -> Void
+    let onAction: (WorkBlock, WorkBlockAction) -> Void
 
     @GestureState private var moveTranslation: CGFloat = 0
     @GestureState private var topTranslation: CGFloat = 0
@@ -32,6 +33,9 @@ struct WorkBlockCard: View {
                 Text(timeRange)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                Text(block.executionState.title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
                 SyncStatusBadge(state: block.syncState)
             }
             .padding(.horizontal, 10)
@@ -47,9 +51,22 @@ struct WorkBlockCard: View {
         .frame(height: liveHeight)
         .offset(y: liveYOffset)
         .gesture(moveGesture)
+        .contextMenu { actionMenu }
         .animation(.easeInOut(duration: 0.14), value: liveHeight)
         .animation(.easeInOut(duration: 0.14), value: liveYOffset)
-        .accessibilityLabel("\(block.title), \(timeRange)")
+        .accessibilityLabel("\(block.title), \(timeRange), \(block.executionState.title)")
+    }
+
+    @ViewBuilder
+    private var actionMenu: some View {
+        if block.executionState == .planned {
+            Button { onAction(block, .start) } label: { Label("시작", systemImage: "play.fill") }
+        }
+        if block.executionState == .planned || block.executionState == .inProgress {
+            Button { onAction(block, .complete) } label: { Label("완료", systemImage: "checkmark") }
+            Button { onAction(block, .delay) } label: { Label("미룸", systemImage: "arrowshape.turn.up.right") }
+            Button(role: .destructive) { onAction(block, .stop) } label: { Label("중단", systemImage: "stop.fill") }
+        }
     }
 
     private var resizeHandle: some View {
