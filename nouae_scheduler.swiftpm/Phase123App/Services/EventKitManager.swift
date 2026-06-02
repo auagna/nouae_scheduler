@@ -5,10 +5,16 @@ import EventKit
 final class EventKitManager: ObservableObject {
     let eventStore = EKEventStore()
     @Published private(set) var authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+    @Published private(set) var reminderAuthorizationStatus = EKEventStore.authorizationStatus(for: .reminder)
 
     var hasFullAccess: Bool {
         if #available(iOS 17.0, *) { return authorizationStatus == .fullAccess }
         return authorizationStatus == .authorized
+    }
+
+    var hasReminderFullAccess: Bool {
+        if #available(iOS 17.0, *) { return reminderAuthorizationStatus == .fullAccess }
+        return reminderAuthorizationStatus == .authorized
     }
 
     func requireCalendarAccess() async throws {
@@ -19,5 +25,15 @@ final class EventKitManager: ObservableObject {
         else { granted = try await eventStore.requestAccess(to: .event) }
         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
         guard granted else { throw SyncError.permissionDenied }
+    }
+
+    func requireReminderAccess() async throws {
+        reminderAuthorizationStatus = EKEventStore.authorizationStatus(for: .reminder)
+        if hasReminderFullAccess { return }
+        let granted: Bool
+        if #available(iOS 17.0, *) { granted = try await eventStore.requestFullAccessToReminders() }
+        else { granted = try await eventStore.requestAccess(to: .reminder) }
+        reminderAuthorizationStatus = EKEventStore.authorizationStatus(for: .reminder)
+        guard granted else { throw SyncError.reminderPermissionDenied }
     }
 }
