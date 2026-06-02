@@ -1,7 +1,8 @@
+import Combine
 import SwiftData
 
 @MainActor
-final class AppStores {
+final class AppStores: ObservableObject {
     let projectStore: ProjectStore
     let rawTaskStore: RawTaskStore
     let workBlockStore: WorkBlockStore
