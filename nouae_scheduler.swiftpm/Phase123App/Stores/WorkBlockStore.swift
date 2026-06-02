@@ -44,6 +44,28 @@ final class WorkBlockStore {
         try context.save()
     }
 
+    func start(block: WorkBlock) throws {
+        try updateState(block: block, state: .inProgress)
+    }
+
+    func markCompleted(block: WorkBlock) throws {
+        block.progress = 1
+        try updateState(block: block, state: .completed)
+    }
+
+    func markDelayed(block: WorkBlock) throws -> RawTask {
+        try updateState(block: block, state: .delayed)
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: Date())) ?? Date()
+        let task = RawTask(title: block.title, projectId: block.projectId, scheduledAt: tomorrow, syncState: .local)
+        context.insert(task)
+        try context.save()
+        return task
+    }
+
+    func markStopped(block: WorkBlock) throws {
+        try updateState(block: block, state: .stopped)
+    }
+
     func fetchBlocksByProject(projectId: UUID) throws -> [WorkBlock] {
         try context.fetch(FetchDescriptor<WorkBlock>()).filter { $0.projectId == projectId }
     }
@@ -54,5 +76,11 @@ final class WorkBlockStore {
 
     func calculateProjectProgress(blocks: [WorkBlock]) -> Double {
         blocks.isEmpty ? 0 : Double(blocks.filter { $0.executionState == .completed }.count) / Double(blocks.count)
+    }
+
+    private func updateState(block: WorkBlock, state: WorkBlockState) throws {
+        block.executionState = state
+        block.updatedAt = Date()
+        try context.save()
     }
 }
