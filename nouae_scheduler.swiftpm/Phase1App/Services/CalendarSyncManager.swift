@@ -13,12 +13,9 @@ struct CalendarSource: Identifiable, Hashable {
 @MainActor
 final class CalendarSyncManager: ObservableObject {
     private let eventKitManager: EventKitManager
-
     @Published private(set) var lastErrorMessage: String?
 
-    init(eventKitManager: EventKitManager) {
-        self.eventKitManager = eventKitManager
-    }
+    init(eventKitManager: EventKitManager) { self.eventKitManager = eventKitManager }
 
     func fetchCalendars() async throws -> [CalendarSource] {
         try await eventKitManager.requireCalendarAccess()
@@ -29,14 +26,10 @@ final class CalendarSyncManager: ObservableObject {
 
     func createCalendar(title: String) async throws -> CalendarSource {
         try await eventKitManager.requireCalendarAccess()
-        guard let source = sourceForNewCalendar() else {
-            throw SyncError.sourceNotFound
-        }
-
+        guard let source = sourceForNewCalendar() else { throw SyncError.sourceNotFound }
         let calendar = EKCalendar(for: .event, eventStore: eventKitManager.eventStore)
         calendar.title = title
         calendar.source = source
-
         do {
             try eventKitManager.eventStore.saveCalendar(calendar, commit: true)
             lastErrorMessage = nil
@@ -71,15 +64,12 @@ final class CalendarSyncManager: ObservableObject {
     }
 
     func colorHex(from calendar: EKCalendar) -> String? {
-        UIColor(cgColor: calendar.cgColor).hexRGB
+        guard let cgColor = calendar.cgColor else { return nil }
+        return UIColor(cgColor: cgColor).hexRGB
     }
 
     private func makeSource(_ calendar: EKCalendar) -> CalendarSource {
-        CalendarSource(
-            id: calendar.calendarIdentifier,
-            title: calendar.title,
-            colorHex: colorHex(from: calendar)
-        )
+        CalendarSource(id: calendar.calendarIdentifier, title: calendar.title, colorHex: colorHex(from: calendar))
     }
 
     private func sourceForNewCalendar() -> EKSource? {
