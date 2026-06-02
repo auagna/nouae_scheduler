@@ -7,9 +7,9 @@ struct CalendarBoard: View {
     let projectColor: (UUID?) -> String?
     let onDropTask: (UUID, Int) -> Void
     let onChangeTime: (WorkBlock, Date, Date) -> Void
-
     private let minuteHeight: CGFloat = 1
     private let rulerWidth: CGFloat = 54
+    private var boardHeight: CGFloat { CGFloat(24 * 60) * minuteHeight }
 
     var body: some View {
         ScrollViewReader { reader in
@@ -23,7 +23,7 @@ struct CalendarBoard: View {
                                 .offset(x: rulerWidth + 6, y: yOffset(for: block))
                         }
                     }
-                    .frame(height: 24 * 60 * minuteHeight)
+                    .frame(height: boardHeight)
                     .dropDestination(for: String.self) { ids, location in
                         guard let raw = ids.first, let id = UUID(uuidString: raw) else { return false }
                         let minute = min(max(Int(location.y / minuteHeight), 0), 23 * 60 + 50)
@@ -31,7 +31,7 @@ struct CalendarBoard: View {
                         return true
                     }
                 }
-                .frame(height: 24 * 60 * minuteHeight)
+                .frame(height: boardHeight)
             }
             .onAppear { reader.scrollTo("hour-8", anchor: .top) }
         }
@@ -62,7 +62,6 @@ struct WorkBlockCard: View {
     let color: Color
     let minuteHeight: CGFloat
     let onChangeTime: (WorkBlock, Date, Date) -> Void
-
     @GestureState private var moveOffset: CGFloat = 0
     @GestureState private var topOffset: CGFloat = 0
     @GestureState private var bottomOffset: CGFloat = 0
@@ -75,8 +74,7 @@ struct WorkBlockCard: View {
                 Text(block.title).font(.caption.weight(.semibold)).lineLimit(2)
                 Text(timeText).font(.caption2).foregroundStyle(.secondary)
                 SyncStatusBadge(state: block.syncState)
-            }
-            .padding(.horizontal, 8).padding(.vertical, 7)
+            }.padding(.horizontal, 8).padding(.vertical, 7)
             topHandle
             bottomHandle
         }
@@ -88,41 +86,14 @@ struct WorkBlockCard: View {
         .animation(.snappy(duration: 0.18), value: liveHeight)
     }
 
-    private var topHandle: some View {
-        Capsule().fill(color).frame(width: 34, height: 5).frame(maxWidth: .infinity).padding(.vertical, 5).frame(maxHeight: .infinity, alignment: .top).contentShape(Rectangle()).highPriorityGesture(topResizeGesture)
-    }
-    private var bottomHandle: some View {
-        Capsule().fill(color).frame(width: 34, height: 5).frame(maxWidth: .infinity).padding(.vertical, 5).frame(maxHeight: .infinity, alignment: .bottom).contentShape(Rectangle()).highPriorityGesture(bottomResizeGesture)
-    }
+    private var topHandle: some View { Capsule().fill(color).frame(width: 34, height: 5).frame(maxWidth: .infinity).padding(.vertical, 5).frame(maxHeight: .infinity, alignment: .top).contentShape(Rectangle()).highPriorityGesture(topResizeGesture) }
+    private var bottomHandle: some View { Capsule().fill(color).frame(width: 34, height: 5).frame(maxWidth: .infinity).padding(.vertical, 5).frame(maxHeight: .infinity, alignment: .bottom).contentShape(Rectangle()).highPriorityGesture(bottomResizeGesture) }
     private var duration: CGFloat { CGFloat(max(block.durationMinutes, 10)) * minuteHeight }
     private var liveHeight: CGFloat { max(28, duration + bottomOffset - topOffset) }
     private var timeText: String { block.startAt.formatted(date: .omitted, time: .shortened) + " - " + block.endAt.formatted(date: .omitted, time: .shortened) }
-
-    private var moveGesture: some Gesture {
-        DragGesture(minimumDistance: 4).updating($moveOffset) { value, state, _ in state = value.translation.height }.onEnded { value in
-            move(by: snappedMinutes(value.translation.height))
-        }
-    }
-    private var topResizeGesture: some Gesture {
-        DragGesture(minimumDistance: 2).updating($topOffset) { value, state, _ in state = value.translation.height }.onEnded { value in
-            let delta = snappedMinutes(value.translation.height)
-            let start = Calendar.current.date(byAdding: .minute, value: delta, to: block.startAt) ?? block.startAt
-            onChangeTime(block, start, block.endAt)
-        }
-    }
-    private var bottomResizeGesture: some Gesture {
-        DragGesture(minimumDistance: 2).updating($bottomOffset) { value, state, _ in state = value.translation.height }.onEnded { value in
-            let delta = snappedMinutes(value.translation.height)
-            let end = Calendar.current.date(byAdding: .minute, value: delta, to: block.endAt) ?? block.endAt
-            onChangeTime(block, block.startAt, end)
-        }
-    }
-    private func move(by delta: Int) {
-        guard delta != 0 else { return }
-        let calendar = Calendar.current
-        let start = calendar.date(byAdding: .minute, value: delta, to: block.startAt) ?? block.startAt
-        let end = calendar.date(byAdding: .minute, value: delta, to: block.endAt) ?? block.endAt
-        onChangeTime(block, start, end)
-    }
+    private var moveGesture: some Gesture { DragGesture(minimumDistance: 4).updating($moveOffset) { value, state, _ in state = value.translation.height }.onEnded { move(by: snappedMinutes($0.translation.height)) } }
+    private var topResizeGesture: some Gesture { DragGesture(minimumDistance: 2).updating($topOffset) { value, state, _ in state = value.translation.height }.onEnded { value in let start = Calendar.current.date(byAdding: .minute, value: snappedMinutes(value.translation.height), to: block.startAt) ?? block.startAt; onChangeTime(block, start, block.endAt) } }
+    private var bottomResizeGesture: some Gesture { DragGesture(minimumDistance: 2).updating($bottomOffset) { value, state, _ in state = value.translation.height }.onEnded { value in let end = Calendar.current.date(byAdding: .minute, value: snappedMinutes(value.translation.height), to: block.endAt) ?? block.endAt; onChangeTime(block, block.startAt, end) } }
+    private func move(by delta: Int) { guard delta != 0 else { return }; let calendar = Calendar.current; onChangeTime(block, calendar.date(byAdding: .minute, value: delta, to: block.startAt) ?? block.startAt, calendar.date(byAdding: .minute, value: delta, to: block.endAt) ?? block.endAt) }
     private func snappedMinutes(_ height: CGFloat) -> Int { Int((height / minuteHeight / 10).rounded()) * 10 }
 }
