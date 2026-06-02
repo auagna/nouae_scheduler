@@ -30,21 +30,12 @@ final class CalendarSyncManager: ObservableObject {
 
     func createCalendarForProject(_ project: Project) async throws {
         try await eventKit.requireCalendarAccess()
-        guard let source = eventKit.sourceForNewCalendar() else {
-            throw SyncError.missingCalendarSource
-        }
-
+        guard let source = eventKit.sourceForNewCalendar() else { throw SyncError.missingCalendarSource }
         let calendar = EKCalendar(for: .event, eventStore: eventKit.eventStore)
         calendar.title = project.title
         calendar.source = source
         try eventKit.eventStore.saveCalendar(calendar, commit: true)
-
-        try projectStore.updateCalendarLink(
-            project: project,
-            calendarIdentifier: calendar.calendarIdentifier,
-            calendarTitle: calendar.title,
-            calendarColorHex: eventKit.calendarColorHex(calendar)
-        )
+        try projectStore.updateCalendarLink(project: project, calendarIdentifier: calendar.calendarIdentifier, calendarTitle: calendar.title, calendarColorHex: eventKit.calendarColorHex(calendar))
     }
 
     func scheduleWorkBlockSync(_ block: WorkBlock) {
@@ -52,7 +43,6 @@ final class CalendarSyncManager: ObservableObject {
         block.syncState = .pending
         block.updatedAt = .now
         try? modelContext.save()
-
         pendingSyncTasks[block.id] = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 3_000_000_000)
             guard !Task.isCancelled else { return }
@@ -63,32 +53,18 @@ final class CalendarSyncManager: ObservableObject {
     func syncWorkBlock(_ block: WorkBlock) async {
         do {
             try await eventKit.requireCalendarAccess()
-            guard block.endAt > block.startAt else {
-                throw SyncError.invalidTimeRange
-            }
+            guard block.endAt > block.startAt else { throw SyncError.invalidTimeRange }
             guard let calendarIdentifier = block.calendarIdentifier,
-                  let calendar = eventKit.calendar(identifier: calendarIdentifier) else {
-                throw SyncError.missingProjectCalendar
-            }
-
+                  let calendar = eventKit.calendar(identifier: calendarIdentifier) else { throw SyncError.missingProjectCalendar }
             block.syncState = .syncing
             try modelContext.save()
-
-            let event: EKEvent
-            if let identifier = block.eventIdentifier,
-               let existing = eventKit.eventStore.event(withIdentifier: identifier) {
-                event = existing
-            } else {
-                event = EKEvent(eventStore: eventKit.eventStore)
-            }
-
+            let event = block.eventIdentifier.flatMap(eventKit.eventStore.event(withIdentifier:)) ?? EKEvent(eventStore: eventKit.eventStore)
             event.calendar = calendar
             event.title = block.title
             event.startDate = block.startAt
             event.endDate = block.endAt
             event.notes = block.memo.isEmpty ? nil : block.memo
             try eventKit.eventStore.save(event, span: .thisEvent, commit: true)
-
             block.eventIdentifier = event.eventIdentifier
             block.calendarIdentifier = calendar.calendarIdentifier
             block.syncState = .synced
@@ -103,38 +79,40 @@ final class CalendarSyncManager: ObservableObject {
         }
     }
 
+    func reconcileLinkedWorkBlocksFromApple() async throws {
+        try await eventKit.requireCalendarAccess()
+        let blocks = try modelContext.fetch(FetchDescriptor<WorkBlock>())
+        for block in blocks {
+            guard let identifier = block.eventIdentifier else { continue }
+            guard let event = eventKit.eventStore.event(withIdentifier: identifier) else {
+                block.syncState = .failed
+                continue
+            }
+            block.title = event.title ?? block.title
+            block.startAt = event.startDate
+            block.endAt = event.endDate
+            block.calendarIdentifier = event.calendar.calendarIdentifier
+            block.syncState = .synced
+            block.updatedAt = .now
+        }
+        try modelContext.save()
+    }
+
     func archiveProjectsWithMissingCalendars() async throws {
         try await eventKit.requireCalendarAccess()
         let calendarIds = Set(eventKit.availableEventCalendars().map(\.calendarIdentifier))
         for project in try projectStore.fetchActiveProjects() {
             guard let identifier = project.calendarIdentifier else { continue }
-            if !calendarIds.contains(identifier) {
-                try projectStore.archiveProjectForBrokenCalendarLink(project)
-            }
+            if !calendarIds.contains(identifier) { try projectStore.archiveProjectForBrokenCalendarLink(project) }
         }
     }
 
     func fetchEvents(from startDate: Date, to endDate: Date, calendarIds: Set<String>) async throws -> [CalendarEventSnapshot] {
         try await eventKit.requireCalendarAccess()
-        let calendars = eventKit.availableEventCalendars().filter {
-            calendarIds.isEmpty || calendarIds.contains($0.calendarIdentifier)
-        }
-        let predicate = eventKit.eventStore.predicateForEvents(
-            withStart: startDate,
-            end: endDate,
-            calendars: calendars
-        )
+        let calendars = eventKit.availableEventCalendars().filter { calendarIds.isEmpty || calendarIds.contains($0.calendarIdentifier) }
+        let predicate = eventKit.eventStore.predicateForEvents(withStart: startDate, end: endDate, calendars: calendars)
         return eventKit.eventStore.events(matching: predicate).map { event in
-            CalendarEventSnapshot(
-                id: event.eventIdentifier ?? UUID().uuidString,
-                title: event.title ?? "제목 없음",
-                startAt: event.startDate,
-                endAt: event.endDate,
-                calendarIdentifier: event.calendar.calendarIdentifier,
-                calendarTitle: event.calendar.title,
-                colorHex: eventKit.calendarColorHex(event.calendar)
-            )
-        }
-        .sorted { $0.startAt < $1.startAt }
+            CalendarEventSnapshot(id: event.eventIdentifier ?? UUID().uuidString, title: event.title ?? "제목 없음", startAt: event.startDate, endAt: event.endDate, calendarIdentifier: event.calendar.calendarIdentifier, calendarTitle: event.calendar.title, colorHex: eventKit.calendarColorHex(event.calendar))
+        }.sorted { $0.startAt < $1.startAt }
     }
 }
