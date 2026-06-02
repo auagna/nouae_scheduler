@@ -11,9 +11,15 @@ final class Project {
     var calendarIdentifier: String?
     var calendarTitle: String?
     var calendarColorHex: String?
+    var syncStateRawValue: String
     var createdAt: Date
     var updatedAt: Date
     var archivedAt: Date?
+
+    var syncState: SyncState {
+        get { SyncState(rawValue: syncStateRawValue) ?? .local }
+        set { syncStateRawValue = newValue.rawValue }
+    }
 
     init(
         id: UUID = UUID(),
@@ -24,6 +30,7 @@ final class Project {
         calendarIdentifier: String? = nil,
         calendarTitle: String? = nil,
         calendarColorHex: String? = nil,
+        syncState: SyncState = .local,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         archivedAt: Date? = nil
@@ -36,6 +43,7 @@ final class Project {
         self.calendarIdentifier = calendarIdentifier
         self.calendarTitle = calendarTitle
         self.calendarColorHex = calendarColorHex
+        syncStateRawValue = syncState.rawValue
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.archivedAt = archivedAt
