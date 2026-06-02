@@ -7,7 +7,7 @@ struct ContentView: View {
                 .tabItem { Label("Dashboard", systemImage: "rectangle.grid.2x2") }
             CalendarPlaceholderView()
                 .tabItem { Label("Calendar", systemImage: "calendar") }
-            ProjectsPlaceholderView()
+            ProjectsView()
                 .tabItem { Label("Projects", systemImage: "folder") }
             PlanPlaceholderView()
                 .tabItem { Label("Plan", systemImage: "clock") }
