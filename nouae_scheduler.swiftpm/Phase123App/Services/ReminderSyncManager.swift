@@ -46,6 +46,9 @@ final class ReminderSyncManager {
                 reminder.calendar = calendar
             }
             reminder.title = task.title
+            reminder.dueDateComponents = task.scheduledAt.map {
+                Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: $0)
+            }
             try eventKit.eventStore.save(reminder, commit: true)
             task.reminderIdentifier = reminder.calendarItemIdentifier
             task.syncState = .synced
