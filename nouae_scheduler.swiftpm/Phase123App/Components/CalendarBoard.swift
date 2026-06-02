@@ -7,6 +7,7 @@ struct CalendarBoard: View {
     let projects: [Project]
     let onDropTask: (UUID, Date) -> Void
     let onChangeTime: (WorkBlock, Date, Date) -> Void
+    let onAction: (WorkBlock, WorkBlockAction) -> Void
 
     private let pointsPerMinute: CGFloat = 1.1
     private let rulerWidth: CGFloat = 54
@@ -23,7 +24,8 @@ struct CalendarBoard: View {
                                 block: block,
                                 color: color(for: block),
                                 pointsPerMinute: pointsPerMinute,
-                                onChangeTime: onChangeTime
+                                onChangeTime: onChangeTime,
+                                onAction: onAction
                             )
                             .frame(width: max(180, geometry.size.width - rulerWidth - 12))
                             .offset(x: rulerWidth + 6, y: yOffset(for: block))
