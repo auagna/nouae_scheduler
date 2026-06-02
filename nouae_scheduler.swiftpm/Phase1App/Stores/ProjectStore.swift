@@ -9,14 +9,51 @@ final class ProjectStore: ObservableObject {
     init(modelContext: ModelContext) { self.modelContext = modelContext }
 
     @discardableResult
-    func createProject(title: String, type: ProjectType = .personal, goal: String = "") throws -> Project {
-        let project = Project(title: title.trimmingCharacters(in: .whitespacesAndNewlines), type: type, goal: goal)
+    func createProject(
+        title: String,
+        type: ProjectType = .personal,
+        status: ProjectStatus = .planning,
+        goal: String = ""
+    ) throws -> Project {
+        let project = Project(
+            title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+            type: type,
+            status: status,
+            goal: goal
+        )
         modelContext.insert(project)
-        for (index, title) in ["목표", "Inbox", "메모", "다음 조정"].enumerated() {
-            modelContext.insert(ProjectMemoSection(projectId: project.id, title: title, order: index))
-        }
+        createDefaultMemoSections(for: project)
         try modelContext.save()
         return project
+    }
+
+    @discardableResult
+    func createProjectWithCalendar(
+        title: String,
+        type: ProjectType,
+        status: ProjectStatus,
+        goal: String,
+        calendarSyncManager: CalendarSyncManager
+    ) async throws -> Project {
+        let project = try createProject(title: title, type: type, status: status, goal: goal)
+        project.syncState = .syncing
+        try modelContext.save()
+
+        do {
+            let calendar = try await calendarSyncManager.createCalendarForProject(project: project)
+            project.calendarIdentifier = calendar.id
+            project.calendarTitle = calendar.title
+            project.calendarColorHex = calendar.colorHex
+            project.syncState = .synced
+            project.updatedAt = Date()
+            try modelContext.save()
+            return project
+        } catch {
+            project.syncState = .failed
+            project.updatedAt = Date()
+            try? modelContext.save()
+            throw error
+        }
     }
 
     func fetchProjects() throws -> [Project] {
@@ -32,5 +69,20 @@ final class ProjectStore: ObservableObject {
         try modelContext.save()
     }
 
-    func archiveProject(_ project: Project) throws { try updateStatus(project, status: .archived) }
+    func archiveProject(_ project: Project) throws {
+        project.status = .archived
+        project.archivedAt = Date()
+        project.updatedAt = Date()
+        try modelContext.save()
+    }
+
+    func archiveProjectsWithMissingCalendars(calendarSyncManager: CalendarSyncManager) async throws {
+        try await calendarSyncManager.archiveProjectsWithMissingCalendars(context: modelContext)
+    }
+
+    private func createDefaultMemoSections(for project: Project) {
+        for (index, title) in ["목표", "Inbox", "메모", "다음 조정"].enumerated() {
+            modelContext.insert(ProjectMemoSection(projectId: project.id, title: title, order: index))
+        }
+    }
 }
