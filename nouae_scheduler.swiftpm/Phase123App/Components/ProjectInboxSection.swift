@@ -15,7 +15,7 @@ struct ProjectInboxSection: View {
                 Button { add() } label: { Image(systemName: "plus.circle.fill") }
                     .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            ForEach(tasks.filter { $0.projectId == project.id && !$0.isConvertedToBlock }) { task in
+            ForEach(tasks.filter { $0.projectId == project.id && stores.rawTaskStore.isVisibleInInbox($0) }) { task in
                 HStack {
                     Text(task.title)
                     Spacer()
