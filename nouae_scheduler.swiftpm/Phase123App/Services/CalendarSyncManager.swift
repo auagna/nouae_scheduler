@@ -1,4 +1,5 @@
 import EventKit
+import Foundation
 import SwiftData
 import UIKit
 
