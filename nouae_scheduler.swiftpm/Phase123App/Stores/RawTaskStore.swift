@@ -37,8 +37,15 @@ final class RawTaskStore {
         try context.save()
     }
 
-    func fetchInboxTasks() throws -> [RawTask] {
-        try context.fetch(FetchDescriptor<RawTask>()).filter { !$0.isConvertedToBlock }
+    func isVisibleInInbox(_ task: RawTask, on date: Date = Date()) -> Bool {
+        guard !task.isConvertedToBlock else { return false }
+        guard let scheduledAt = task.scheduledAt else { return true }
+        let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: date)) ?? date
+        return scheduledAt < endOfDay
+    }
+
+    func fetchInboxTasks(on date: Date = Date()) throws -> [RawTask] {
+        try context.fetch(FetchDescriptor<RawTask>()).filter { isVisibleInInbox($0, on: date) }
     }
 
     func fetchTasksByProject(projectId: UUID) throws -> [RawTask] {
@@ -46,6 +53,6 @@ final class RawTaskStore {
     }
 
     func fetchUnconvertedTasksByProject(projectId: UUID) throws -> [RawTask] {
-        try fetchTasksByProject(projectId: projectId).filter { !$0.isConvertedToBlock }
+        try fetchTasksByProject(projectId: projectId).filter { isVisibleInInbox($0) }
     }
 }
