@@ -13,6 +13,7 @@ struct PlanView: View {
     @State private var boardDate = Date()
     @State private var selectedProjectId: UUID?
     @State private var placementTask: RawTask?
+    @State private var completedLogBlock: WorkBlock?
     @State private var message: String?
 
     var body: some View {
@@ -47,6 +48,9 @@ struct PlanView: View {
                 PlaceRawTaskSheet(task: task, projects: activeProjects, initialDate: boardDate) { projectId, startAt, endAt in
                     place(task: task, projectId: projectId, startAt: startAt, endAt: endAt)
                 }
+            }
+            .sheet(item: $completedLogBlock) { block in
+                LogEditorSheet(initialProjectId: block.projectId, initialWorkBlockId: block.id)
             }
             .task {
                 if services.eventKit.hasReminderFullAccess { await importReminders() }
@@ -98,17 +102,19 @@ struct PlanView: View {
                     .foregroundStyle(.secondary)
             }
             .padding()
+            WorkBlockExecutionPanel(blocks: dayBlocks, projects: projects, onAction: perform)
             CalendarBoard(
                 date: boardDate,
                 blocks: dayBlocks,
                 projects: projects,
                 onDropTask: drop,
-                onChangeTime: updateTime
+                onChangeTime: updateTime,
+                onAction: perform
             )
         }
     }
 
-    private var inboxTasks: [RawTask] { tasks.filter { !$0.isConvertedToBlock } }
+    private var inboxTasks: [RawTask] { tasks.filter { stores.rawTaskStore.isVisibleInInbox($0) } }
     private var activeProjects: [Project] { projects.filter { $0.status != .archived } }
     private var dayBlocks: [WorkBlock] { blocks.filter { Calendar.current.isDate($0.startAt, inSameDayAs: boardDate) } }
 
@@ -154,6 +160,25 @@ struct PlanView: View {
         do {
             try stores.workBlockStore.updateTime(block: block, startAt: startAt, endAt: endAt)
             if block.calendarIdentifier != nil { services.calendarSync.scheduleSync(block: block) }
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+
+    private func perform(block: WorkBlock, action: WorkBlockAction) {
+        do {
+            switch action {
+            case .start:
+                try stores.workBlockStore.start(block: block)
+            case .complete:
+                try stores.workBlockStore.markCompleted(block: block)
+                completedLogBlock = block
+            case .delay:
+                let task = try stores.workBlockStore.markDelayed(block: block)
+                Task { try? await services.reminderSync.exportRawTask(task) }
+            case .stop:
+                try stores.workBlockStore.markStopped(block: block)
+            }
         } catch {
             message = error.localizedDescription
         }
