@@ -79,7 +79,6 @@ struct WorkBlockExecutionPanel: View {
                 }
                 .buttonStyle(.bordered)
             }
-            .labelStyle(.iconOnly)
         }
     }
 
@@ -103,7 +102,7 @@ struct WorkBlockExecutionPanel: View {
 }
 
 private struct PanelItem {
-    enum Mode { case start, running, finish }
+    enum Mode: Equatable { case start, running, finish }
     let block: WorkBlock
     let mode: Mode
     var title: String {
