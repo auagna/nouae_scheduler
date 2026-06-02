@@ -1,105 +1,63 @@
 # nou ae MVP
 
-`SwiftDataApp` is the active Swift Playgrounds target. The MVP uses SwiftUI, SwiftData, and EventKit only.
+`SwiftDataApp` is the active iPad Swift Playgrounds target. The package uses SwiftUI, SwiftData, and EventKit only.
 
-## Folder structure
+## Main structure
 
 ```text
 SwiftDataApp/
 ├── App.swift
-├── Models/
-│   ├── Enums.swift
-│   ├── Project.swift
-│   ├── RawTask.swift
-│   ├── WorkBlock.swift
-│   ├── ProjectLog.swift
-│   ├── ProjectMemoSection.swift
-│   └── NextAdjustment.swift
-├── Stores/
-│   ├── AppStores.swift
-│   ├── ProjectStore.swift
-│   ├── RawTaskStore.swift
-│   ├── WorkBlockStore.swift
-│   ├── LogStore.swift
-│   └── DashboardStore.swift
-├── Sync/
-│   ├── SyncError.swift
-│   ├── EventKitManager.swift
-│   ├── CalendarSyncManager.swift
-│   ├── ReminderSyncManager.swift
-│   └── AppServices.swift
-├── Support/
-│   ├── AppModelContainer.swift
-│   ├── DateSnapper.swift
-│   ├── ColorHex.swift
-│   └── SampleDataSeeder.swift
-└── Views/
-    ├── MVPContentView.swift
-    └── FoundationRootView.swift
+├── Models/          SwiftData entities and enums
+├── Stores/          local-first data operations
+├── Sync/            EventKit access, Calendar sync, Reminder sync, active refresh
+├── Support/         ModelContainer, snapping, color, sample data
+├── Components/      ProjectCard, status badge, CalendarBoard, ExecutionPanel
+└── Views/           Dashboard, Calendar, Projects, Plan, Log
 ```
 
-## MVP rules
+## Implemented MVP loop
 
-- Project creation creates one Apple Calendar and stores its identifier, title, and color.
-- nou ae reads the Apple Calendar color. It does not overwrite it.
-- WorkBlock is saved as an Apple Calendar Event after a 3-second debounce.
-- Event titles remain plain text. Do not prepend category labels.
+- Dashboard summarizes planned, in-progress, completed, delayed, and stopped work.
+- Project creation creates one Apple Calendar and reads its color without overwriting it.
+- Projects are grouped by status and open a Project Dashboard.
 - RawTask quick capture exports to Apple Reminders.
-- Reminder import upserts incomplete reminders into RawTask Inbox.
-- Log stays inside SwiftData and is not created automatically.
-- If a linked Apple Calendar disappears, `archiveProjectsWithMissingCalendars()` archives the linked project.
-
-## Swift Playgrounds load order
-
-When recreating files manually, use this order:
-
-1. `Models/Enums.swift`
-2. All remaining files in `Models/`
-3. `Support/AppModelContainer.swift`, `Support/DateSnapper.swift`, `Support/ColorHex.swift`
-4. All files in `Stores/`
-5. All files in `Sync/`
-6. `Support/SampleDataSeeder.swift`
-7. `Views/MVPContentView.swift`
-8. `App.swift`
-
-When downloading from GitHub, open `nouae_scheduler.swiftpm` directly instead of pasting files individually.
+- Apple Reminders import upserts by `reminderIdentifier` and avoids duplicates.
+- Plan uses a 24-hour Calendar Board. RawTask supports tap placement and drag placement.
+- WorkBlock moves vertically and resizes from top or bottom handles with 10-minute snapping.
+- Calendar event save waits for a 3-second debounce after edits.
+- App activation reconciles linked WorkBlocks from Apple Calendar. Apple values win for MVP conflicts.
+- Deleted linked calendars archive their Projects.
+- Calendar provides Month grid, Week columns, and Day list with Apple Calendar colors.
+- Log is user-authored. Saving a next adjustment also creates a local `NextAdjustment`.
 
 ## Permission strings
 
-`Info.plist` includes:
-
-- `NSCalendarsFullAccessUsageDescription`
-- `NSRemindersFullAccessUsageDescription`
-- legacy Calendar and Reminders usage descriptions for compatibility
+`Info.plist` includes `NSCalendarsFullAccessUsageDescription` and `NSRemindersFullAccessUsageDescription` plus legacy keys for compatibility.
 
 ## iPad test scenario
 
-1. Download the latest repository archive from GitHub and open `nouae_scheduler.swiftpm` in Swift Playgrounds.
-2. Run the app and open `Projects`.
-3. Create a project named `nou ae 개발`.
-4. Allow full Calendar access when prompted.
-5. Confirm a new Apple Calendar named `nou ae 개발` appears in the Calendar app.
-6. Open `Plan`, enter a RawTask title, and tap the plus icon.
-7. Allow full Reminders access when prompted.
-8. Confirm the RawTask appears in Apple Reminders.
-9. Tap the RawTask in Plan to place it as a one-hour WorkBlock.
-10. Wait at least 3 seconds.
-11. Confirm the event appears in the project's Apple Calendar without a category prefix.
-12. Open `Calendar` and switch Day, Week, and Month to confirm Apple events load.
-13. Open `Log`, write a reflection, and confirm it appears in recent logs.
+1. Download the latest GitHub archive and open `nouae_scheduler.swiftpm` in Swift Playgrounds.
+2. Run the app. Open `Projects` and create `nou ae 개발`.
+3. Allow full Calendar access. Confirm the Calendar app contains a new `nou ae 개발` calendar.
+4. Open `Plan`. Choose `nou ae 개발` as the placement project.
+5. Add a RawTask title. Allow full Reminders access and confirm it appears in Reminders.
+6. Drag the RawTask onto the board or tap it for current-time placement.
+7. Drag the WorkBlock vertically, then resize it using the top and bottom handles.
+8. Wait at least 3 seconds. Confirm the project calendar event exists without a category prefix.
+9. Change the event time in Apple Calendar, return to nou ae, and confirm Plan reflects the Apple value.
+10. Open `Calendar` and switch Day, Week, and Month.
+11. Open `Log`, save a reflection and next adjustment, then confirm Dashboard reflects the adjustment.
 
 ## Known MVP limits
 
-- Plan currently provides tap-to-place before direct drag-and-drop placement.
-- Block resize handles and live drag feedback are the next UI step.
-- Calendar Day, Week, and Month currently share an event list presentation. Grid layouts are the next UI step.
-- Reminder import is implemented in `ReminderSyncManager` but does not yet have a visible toolbar button.
-- Calendar filter state is not yet persisted.
+- Calendar Day view is a readable event list; the detailed editable time ruler lives in Plan.
+- Calendar filters and Plan layout persist locally with `AppStorage`.
+- Reminder import runs when the app becomes active after permission is granted and also has a manual refresh button in Plan.
+- Execution suggestions are visible in Plan when a planned block reaches its start time. Background notifications are a later phase.
 
 ## Next implementation step
 
-1. Add a real Plan calendar board with 10-minute drag snapping and resize handles.
-2. Add Calendar day timeline, week columns, and month grid.
-3. Add visible Reminder import and permission recovery controls.
-4. Persist calendar filters and user-selected Plan layout.
-5. Add start suggestion and end-of-block completion sheet.
+1. Add optional local notifications for start and end suggestions.
+2. Add a completion sheet with an immediate optional Log shortcut.
+3. Add memo editing and project archive controls in Project Dashboard.
+4. Add dedicated sync recovery actions for failed blocks.
