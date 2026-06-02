@@ -11,11 +11,21 @@ struct NouAEApp: App {
     init() {
         do {
             let container = try AppModelContainer.make()
+            let stores = AppStores(context: container.mainContext)
             self.container = container
-            _stores = StateObject(wrappedValue: AppStores(context: container.mainContext))
-            _services = StateObject(wrappedValue: AppServices())
-        } catch { fatalError("Failed to create SwiftData container: \(error)") }
+            _stores = StateObject(wrappedValue: stores)
+            _services = StateObject(wrappedValue: AppServices(context: container.mainContext, stores: stores))
+        } catch {
+            fatalError("Failed to create SwiftData container: \(error)")
+        }
     }
 
-    var body: some Scene { WindowGroup { ContentView().environmentObject(stores).environmentObject(services) }.modelContainer(container) }
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                .environmentObject(stores)
+                .environmentObject(services)
+        }
+        .modelContainer(container)
+    }
 }
