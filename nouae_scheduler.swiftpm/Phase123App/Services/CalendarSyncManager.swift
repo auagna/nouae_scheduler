@@ -20,8 +20,43 @@ final class CalendarSyncManager {
         self.context = context
     }
 
+    func fetchCalendars() async throws -> [CalendarSource] {
+        try await eventKit.requireCalendarAccess()
+        return eventKit.eventStore.calendars(for: .event)
+            .map { CalendarSource(id: $0.calendarIdentifier, title: $0.title, colorHex: colorHex($0)) }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    func fetchEvents(from startDate: Date, to endDate: Date, calendarIdentifiers: [String], projects: [Project]) async throws -> [CalendarTimelineItem] {
+        guard !calendarIdentifiers.isEmpty else { return [] }
+        try await eventKit.requireCalendarAccess()
+        let calendars = calendarIdentifiers.compactMap { eventKit.eventStore.calendar(withIdentifier: $0) }
+        guard !calendars.isEmpty else { return [] }
+        let predicate = eventKit.eventStore.predicateForEvents(withStart: startDate, end: endDate, calendars: calendars)
+        return eventKit.eventStore.events(matching: predicate).map { event in
+            let identifier = event.eventIdentifier ?? event.calendarItemIdentifier
+            let project = projects.first { $0.calendarIdentifier == event.calendar.calendarIdentifier }
+            return CalendarTimelineItem(
+                id: "event-\(identifier)",
+                title: event.title ?? "제목 없음",
+                startAt: event.startDate,
+                endAt: event.endDate,
+                calendarIdentifier: event.calendar.calendarIdentifier,
+                colorHex: colorHex(event.calendar),
+                projectId: project?.id,
+                workBlockId: nil,
+                externalEventIdentifier: event.eventIdentifier,
+                isLocalOnly: false
+            )
+        }
+        .sorted { $0.startAt < $1.startAt }
+    }
+
     func createCalendar(title: String) async throws -> CalendarSource {
         try await eventKit.requireCalendarAccess()
+        if let existing = eventKit.eventStore.calendars(for: .event).first(where: { $0.title == title }) {
+            return CalendarSource(id: existing.calendarIdentifier, title: existing.title, colorHex: colorHex(existing))
+        }
         guard let source = preferredSource() else { throw SyncError.sourceNotFound }
         let calendar = EKCalendar(for: .event, eventStore: eventKit.eventStore)
         calendar.title = title
