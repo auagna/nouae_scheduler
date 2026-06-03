@@ -7,7 +7,9 @@ final class ProjectStore {
     init(context: ModelContext) { self.context = context }
 
     func createProject(title: String, type: ProjectType, status: ProjectStatus, goal: String, calendarSyncManager: CalendarSyncManager) async throws -> Project {
-        let project = Project(title: title.trimmingCharacters(in: .whitespacesAndNewlines), type: type, status: status, goal: goal)
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        try validateUniqueActiveTitle(trimmedTitle)
+        let project = Project(title: trimmedTitle, type: type, status: status, goal: goal)
         context.insert(project)
         createDefaultSections(project: project)
         try context.save()
@@ -31,7 +33,9 @@ final class ProjectStore {
     }
 
     func createLocalProject(title: String, type: ProjectType = .personal, status: ProjectStatus = .planning, goal: String = "") throws -> Project {
-        let project = Project(title: title, type: type, status: status, goal: goal)
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        try validateUniqueActiveTitle(trimmedTitle)
+        let project = Project(title: trimmedTitle, type: type, status: status, goal: goal)
         context.insert(project)
         createDefaultSections(project: project)
         try context.save()
@@ -72,6 +76,13 @@ final class ProjectStore {
         section.content = content.trimmingCharacters(in: .whitespacesAndNewlines)
         section.updatedAt = Date()
         try context.save()
+    }
+
+    private func validateUniqueActiveTitle(_ title: String) throws {
+        let exists = try context.fetch(FetchDescriptor<Project>()).contains {
+            $0.status != .archived && $0.title.localizedCaseInsensitiveCompare(title) == .orderedSame
+        }
+        if exists { throw SyncError.duplicateProjectTitle }
     }
 
     private func createDefaultSections(project: Project) {
