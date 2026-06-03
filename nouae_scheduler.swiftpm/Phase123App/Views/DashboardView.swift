@@ -79,8 +79,9 @@ struct DashboardView: View {
                 Section("Closing Summary") {
                     Text(snapshot.closingSummary)
                 }
-                Section {
+                Section("MVP 관리") {
                     Button("샘플 데이터 생성") { seed() }
+                    Button("샘플 데이터 제거", role: .destructive) { removeSampleData() }
                 }
                 if let message {
                     Text(message)
@@ -108,6 +109,15 @@ struct DashboardView: View {
         do {
             try SampleDataSeeder.seed(context: context, stores: stores)
             message = "샘플 데이터를 확인했습니다."
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+
+    private func removeSampleData() {
+        do {
+            try SampleDataSeeder.removeSampleData(context: context)
+            message = "샘플 데이터를 제거했습니다."
         } catch {
             message = error.localizedDescription
         }
