@@ -74,6 +74,10 @@ final class WorkBlockStore {
         try fetchBlocksByProject(projectId: projectId).filter { Calendar.current.isDateInToday($0.startAt) }
     }
 
+    func fetchBlocks(from startDate: Date, to endDate: Date) throws -> [WorkBlock] {
+        try context.fetch(FetchDescriptor<WorkBlock>()).filter { $0.startAt < endDate && $0.endAt > startDate }
+    }
+
     func calculateProjectProgress(blocks: [WorkBlock]) -> Double {
         blocks.isEmpty ? 0 : Double(blocks.filter { $0.executionState == .completed }.count) / Double(blocks.count)
     }
