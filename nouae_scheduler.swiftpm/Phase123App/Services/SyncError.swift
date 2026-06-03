@@ -8,6 +8,7 @@ enum SyncError: LocalizedError {
     case reminderCalendarNotFound
     case sourceNotFound
     case invalidTimeRange
+    case duplicateProjectTitle
 
     var errorDescription: String? {
         switch self {
@@ -25,6 +26,8 @@ enum SyncError: LocalizedError {
             return "새 캘린더를 저장할 계정을 찾지 못했습니다."
         case .invalidTimeRange:
             return "WorkBlock 종료 시간은 시작 시간보다 늦어야 합니다."
+        case .duplicateProjectTitle:
+            return "같은 이름의 활성 Project가 이미 있습니다. Project는 Apple Calendar와 1:1로 연결됩니다."
         }
     }
 }
