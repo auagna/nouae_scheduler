@@ -43,6 +43,34 @@ final class ReminderSyncManager {
         return ReminderListSource(id: list.calendarIdentifier, title: list.title)
     }
 
+    func ensureBlockReminderList() async throws -> ReminderListSource {
+        try await eventKit.requireReminderAccess()
+        let settings = try syncSettings()
+
+        if let identifier = settings.blockReminderListIdentifier,
+           let existing = eventKit.eventStore.calendar(withIdentifier: identifier) {
+            settings.blockReminderListTitle = existing.title
+            settings.updatedAt = Date()
+            try? context.save()
+            return ReminderListSource(id: existing.calendarIdentifier, title: existing.title)
+        }
+
+        if let existing = eventKit.eventStore.calendars(for: .reminder).first(where: { $0.title == settings.blockReminderListTitle }) {
+            settings.blockReminderListIdentifier = existing.calendarIdentifier
+            settings.blockReminderListTitle = existing.title
+            settings.updatedAt = Date()
+            try? context.save()
+            return ReminderListSource(id: existing.calendarIdentifier, title: existing.title)
+        }
+
+        let created = try await createReminderList(title: settings.blockReminderListTitle)
+        settings.blockReminderListIdentifier = created.id
+        settings.blockReminderListTitle = created.title
+        settings.updatedAt = Date()
+        try context.save()
+        return created
+    }
+
     func importInboxReminders() async throws -> Int {
         try await eventKit.requireReminderAccess()
         let reminders = await fetchIncompleteReminders()
@@ -64,16 +92,14 @@ final class ReminderSyncManager {
         do {
             try await eventKit.requireReminderAccess()
             let reminder: EKReminder
+            let targetList = try await reminderListForRawTask(task)
             if let identifier = task.reminderIdentifier,
                let existing = eventKit.eventStore.calendarItem(withIdentifier: identifier) as? EKReminder {
                 reminder = existing
             } else {
-                guard let calendar = eventKit.eventStore.defaultCalendarForNewReminders() else {
-                    throw SyncError.reminderCalendarNotFound
-                }
                 reminder = EKReminder(eventStore: eventKit.eventStore)
-                reminder.calendar = calendar
             }
+            reminder.calendar = targetList
             reminder.title = task.title
             reminder.dueDateComponents = task.scheduledAt.map {
                 Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: $0)
@@ -108,6 +134,41 @@ final class ReminderSyncManager {
                 continuation.resume(returning: reminders ?? [])
             }
         }
+    }
+
+    private func reminderListForRawTask(_ task: RawTask) async throws -> EKCalendar {
+        if let projectId = task.projectId,
+           let project = try context.fetch(FetchDescriptor<Project>()).first(where: { $0.id == projectId }) {
+            if let identifier = project.reminderListIdentifier,
+               let list = eventKit.eventStore.calendar(withIdentifier: identifier) {
+                return list
+            }
+
+            if let area = try context.fetch(FetchDescriptor<ProjectArea>()).first(where: { $0.id == project.areaId }),
+               let identifier = area.reminderListIdentifier,
+               let list = eventKit.eventStore.calendar(withIdentifier: identifier) {
+                project.reminderListIdentifier = identifier
+                project.reminderListTitle = area.reminderListTitle
+                try? context.save()
+                return list
+            }
+        }
+
+        let blockList = try await ensureBlockReminderList()
+        guard let list = eventKit.eventStore.calendar(withIdentifier: blockList.id) else {
+            throw SyncError.reminderCalendarNotFound
+        }
+        return list
+    }
+
+    private func syncSettings() throws -> AppSyncSettings {
+        if let existing = try context.fetch(FetchDescriptor<AppSyncSettings>()).first {
+            return existing
+        }
+        let settings = AppSyncSettings()
+        context.insert(settings)
+        try context.save()
+        return settings
     }
 
     private func preferredReminderSource() -> EKSource? {
