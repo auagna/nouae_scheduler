@@ -30,10 +30,10 @@ struct ProjectDashboardView: View {
                                 ProjectPulsePanel(
                                     blocks: projectBlocks,
                                     logs: projectLogs,
-                                    projectColor: project.calendarColor
+                                    projectColor: projectColor
                                 )
                                 ProjectThinkingSpacePanel(sections: projectSections)
-                                ProjectTrackerPanel(blocks: projectBlocks, logs: projectLogs, projectColor: project.calendarColor)
+                                ProjectTrackerPanel(blocks: projectBlocks, logs: projectLogs, projectColor: projectColor)
                             }
                             .frame(width: geometry.size.width * 0.38)
 
@@ -52,12 +52,12 @@ struct ProjectDashboardView: View {
                         }
                     } else {
                         VStack(alignment: .leading, spacing: 14) {
-                            ProjectPulsePanel(blocks: projectBlocks, logs: projectLogs, projectColor: project.calendarColor)
+                            ProjectPulsePanel(blocks: projectBlocks, logs: projectLogs, projectColor: projectColor)
                             ProjectTodayWorkPanel(blocks: todayBlocks)
                             ProjectInboxPanel(tasks: projectTasks)
                             ProjectNextAdjustmentPanel(adjustments: projectAdjustments)
                             ProjectThinkingSpacePanel(sections: projectSections)
-                            ProjectTrackerPanel(blocks: projectBlocks, logs: projectLogs, projectColor: project.calendarColor)
+                            ProjectTrackerPanel(blocks: projectBlocks, logs: projectLogs, projectColor: projectColor)
                             ProjectRecentLogsPanel(logs: projectLogs)
                             ProjectIntelligencePanel(insights: projectInsights)
                         }
@@ -108,6 +108,10 @@ struct ProjectDashboardView: View {
         stores.workBlockStore.calculateProjectProgress(blocks: projectBlocks)
     }
 
+    private var projectColor: Color {
+        Color(calendarHex: project.calendarColorHex)
+    }
+
     private var projectInsights: [String] {
         var values: [String] = []
         if project.status == .active && projectBlocks.filter({ $0.startAt > Calendar.current.date(byAdding: .day, value: -7, to: Date())! }).isEmpty {
@@ -135,7 +139,7 @@ private struct ProjectCommandHeaderCard: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
                 Circle()
-                    .fill(project.calendarColor)
+                    .fill(projectColor)
                     .frame(width: 14, height: 14)
                     .padding(.top, 8)
                 VStack(alignment: .leading, spacing: 5) {
@@ -160,12 +164,16 @@ private struct ProjectCommandHeaderCard: View {
                 }
             }
             ProgressView(value: progress)
-                .tint(project.calendarColor)
+                .tint(projectColor)
             Text("Updated \(project.updatedAt.formatted(date: .abbreviated, time: .shortened))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .projectCard(accent: project.calendarColor)
+        .projectCard(accent: projectColor)
+    }
+
+    private var projectColor: Color {
+        Color(calendarHex: project.calendarColorHex)
     }
 }
 
@@ -447,11 +455,5 @@ private extension View {
                         .padding(.vertical, 14)
                 }
             }
-    }
-}
-
-private extension Project {
-    var calendarColor: Color {
-        Color(calendarHex: calendarColorHex)
     }
 }
