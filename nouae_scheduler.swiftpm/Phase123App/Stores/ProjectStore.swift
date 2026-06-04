@@ -6,33 +6,6 @@ final class ProjectStore {
     private let context: ModelContext
     init(context: ModelContext) { self.context = context }
 
-    @available(*, deprecated, message: "Use createProjectInArea once Area routing is fully enabled.")
-    func createProject(title: String, type: ProjectType, status: ProjectStatus, goal: String, calendarSyncManager: CalendarSyncManager) async throws -> Project {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        try validateUniqueActiveTitle(trimmedTitle)
-        let project = Project(title: trimmedTitle, type: type, status: status, goal: goal)
-        context.insert(project)
-        createDefaultSections(project: project)
-        try context.save()
-        project.syncState = .syncing
-        try context.save()
-        do {
-            let calendar = try await calendarSyncManager.createCalendar(title: project.title)
-            project.calendarIdentifier = calendar.id
-            project.calendarTitle = calendar.title
-            project.calendarColorHex = calendar.colorHex
-            project.syncState = .synced
-            project.updatedAt = Date()
-            try context.save()
-        } catch {
-            project.syncState = .failed
-            project.updatedAt = Date()
-            try? context.save()
-            throw error
-        }
-        return project
-    }
-
     func createProjectInArea(title: String, type: ProjectType, status: ProjectStatus, goal: String, area: ProjectArea?) throws -> Project {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { throw SyncError.invalidTitle }
