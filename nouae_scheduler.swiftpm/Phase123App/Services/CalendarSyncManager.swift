@@ -61,9 +61,40 @@ final class CalendarSyncManager {
         let calendar = EKCalendar(for: .event, eventStore: eventKit.eventStore)
         calendar.title = title
         calendar.source = source
-        do { try eventKit.eventStore.saveCalendar(calendar, commit: true) }
-        catch { throw SyncError.calendarCreationFailed }
+        do {
+            try eventKit.eventStore.saveCalendar(calendar, commit: true)
+        } catch {
+            throw SyncError.calendarCreationFailed
+        }
         return CalendarSource(id: calendar.calendarIdentifier, title: calendar.title, colorHex: colorHex(calendar))
+    }
+
+    func ensureBlockCalendar() async throws -> CalendarSource {
+        try await eventKit.requireCalendarAccess()
+        let settings = try syncSettings()
+
+        if let identifier = settings.blockCalendarIdentifier,
+           let existing = eventKit.eventStore.calendar(withIdentifier: identifier) {
+            settings.blockCalendarTitle = existing.title
+            settings.updatedAt = Date()
+            try? context.save()
+            return CalendarSource(id: existing.calendarIdentifier, title: existing.title, colorHex: colorHex(existing))
+        }
+
+        if let existing = eventKit.eventStore.calendars(for: .event).first(where: { $0.title == settings.blockCalendarTitle }) {
+            settings.blockCalendarIdentifier = existing.calendarIdentifier
+            settings.blockCalendarTitle = existing.title
+            settings.updatedAt = Date()
+            try? context.save()
+            return CalendarSource(id: existing.calendarIdentifier, title: existing.title, colorHex: colorHex(existing))
+        }
+
+        let created = try await createCalendar(title: settings.blockCalendarTitle)
+        settings.blockCalendarIdentifier = created.id
+        settings.blockCalendarTitle = created.title
+        settings.updatedAt = Date()
+        try context.save()
+        return created
     }
 
     func scheduleSync(block: WorkBlock) {
@@ -71,8 +102,11 @@ final class CalendarSyncManager {
         block.syncState = .pending
         try? context.save()
         debounceTasks[block.id] = Task { [weak self, weak block] in
-            do { try await Task.sleep(nanoseconds: 3_000_000_000) }
-            catch { return }
+            do {
+                try await Task.sleep(nanoseconds: 3_000_000_000)
+            } catch {
+                return
+            }
             guard !Task.isCancelled, let self, let block else { return }
             await self.sync(block: block)
             self.debounceTasks[block.id] = nil
@@ -117,10 +151,7 @@ final class CalendarSyncManager {
         do {
             try await eventKit.requireCalendarAccess()
             guard block.endAt > block.startAt else { throw SyncError.invalidTimeRange }
-            guard let calendarIdentifier = block.calendarIdentifier,
-                  let calendar = eventKit.eventStore.calendar(withIdentifier: calendarIdentifier) else {
-                throw SyncError.calendarNotFound
-            }
+            let calendar = try await targetCalendar(for: block)
             let event = block.eventIdentifier.flatMap { eventKit.eventStore.event(withIdentifier: $0) }
                 ?? EKEvent(eventStore: eventKit.eventStore)
             event.title = block.title
@@ -140,6 +171,47 @@ final class CalendarSyncManager {
         }
     }
 
+    private func targetCalendar(for block: WorkBlock) async throws -> EKCalendar {
+        if let projectId = block.projectId,
+           let project = try context.fetch(FetchDescriptor<Project>()).first(where: { $0.id == projectId }) {
+            if let identifier = project.calendarIdentifier,
+               let calendar = eventKit.eventStore.calendar(withIdentifier: identifier) {
+                return calendar
+            }
+
+            if let area = try context.fetch(FetchDescriptor<ProjectArea>()).first(where: { $0.id == project.areaId }),
+               let identifier = area.calendarIdentifier,
+               let calendar = eventKit.eventStore.calendar(withIdentifier: identifier) {
+                project.calendarIdentifier = identifier
+                project.calendarTitle = area.calendarTitle
+                project.calendarColorHex = area.calendarColorHex
+                try? context.save()
+                return calendar
+            }
+        }
+
+        if let identifier = block.calendarIdentifier,
+           let calendar = eventKit.eventStore.calendar(withIdentifier: identifier) {
+            return calendar
+        }
+
+        let blockCalendar = try await ensureBlockCalendar()
+        guard let calendar = eventKit.eventStore.calendar(withIdentifier: blockCalendar.id) else {
+            throw SyncError.calendarNotFound
+        }
+        return calendar
+    }
+
+    private func syncSettings() throws -> AppSyncSettings {
+        if let existing = try context.fetch(FetchDescriptor<AppSyncSettings>()).first {
+            return existing
+        }
+        let settings = AppSyncSettings()
+        context.insert(settings)
+        try context.save()
+        return settings
+    }
+
     private func preferredSource() -> EKSource? {
         eventKit.eventStore.sources.first { $0.sourceType == .calDAV && $0.title.localizedCaseInsensitiveContains("icloud") }
             ?? eventKit.eventStore.defaultCalendarForNewEvents?.source
@@ -154,7 +226,10 @@ final class CalendarSyncManager {
 
 private extension UIColor {
     var hexRGB: String? {
-        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
         guard getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return nil }
         return String(format: "#%02X%02X%02X", Int(red * 255), Int(green * 255), Int(blue * 255))
     }
