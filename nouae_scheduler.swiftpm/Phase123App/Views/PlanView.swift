@@ -465,10 +465,10 @@ private struct HourGridWorkBlockSegment: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill((project?.calendarColor ?? .blue).opacity(0.18))
+                .fill(projectColor.opacity(0.18))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(project?.calendarColor ?? .blue, lineWidth: 1)
+                        .stroke(projectColor, lineWidth: 1)
                 )
             HStack(spacing: 6) {
                 grip(systemImage: "line.3.horizontal")
@@ -537,10 +537,9 @@ private struct HourGridWorkBlockSegment: View {
     }
 
     private enum ResizeEdge { case left, right }
-}
 
-private extension Project {
-    var calendarColor: Color {
-        Color(calendarHex: calendarColorHex)
+    private var projectColor: Color {
+        guard let project else { return .blue }
+        return Color(calendarHex: project.calendarColorHex)
     }
 }
