@@ -157,7 +157,7 @@ struct PlanView: View {
         let project = projects.first { $0.id == projectId }
         do {
             let block = try stores.workBlockStore.convert(task: task, project: project, startAt: startAt, endAt: endAt)
-            if block.calendarIdentifier != nil { services.calendarSync.scheduleSync(block: block) }
+            services.calendarSync.scheduleSync(block: block)
             Task { try? await services.reminderSync.markReminderCompleted(for: task) }
         } catch {
             message = error.localizedDescription
@@ -167,7 +167,7 @@ struct PlanView: View {
     private func updateTime(block: WorkBlock, startAt: Date, endAt: Date) {
         do {
             try stores.workBlockStore.updateTime(block: block, startAt: startAt, endAt: endAt)
-            if block.calendarIdentifier != nil { services.calendarSync.scheduleSync(block: block) }
+            services.calendarSync.scheduleSync(block: block)
         } catch {
             message = error.localizedDescription
         }
