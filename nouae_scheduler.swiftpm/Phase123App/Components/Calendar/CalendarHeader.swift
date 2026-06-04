@@ -22,10 +22,14 @@ struct CalendarHeader: View {
                 .accessibilityLabel("Calendar Filter")
 
                 if showsDrawingToggle {
-                    Toggle(isOn: $isDrawingMode) {
+                    Button {
+                        isDrawingMode.toggle()
+                    } label: {
                         Image(systemName: "pencil.tip")
+                            .frame(width: 30, height: 30)
                     }
-                    .toggleStyle(.button)
+                    .buttonStyle(.borderedProminent)
+                    .tint(isDrawingMode ? .blue : .gray)
                     .accessibilityLabel("Drawing Mode")
                 }
 
