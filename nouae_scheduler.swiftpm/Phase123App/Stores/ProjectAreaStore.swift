@@ -30,6 +30,35 @@ final class ProjectAreaStore {
         return area
     }
 
+    func createArea(title: String, calendarSyncManager: CalendarSyncManager, reminderSyncManager: ReminderSyncManager) async throws -> ProjectArea {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { throw SyncError.invalidTitle }
+        try validateUniqueActiveTitle(trimmedTitle)
+
+        let area = ProjectArea(title: trimmedTitle, syncState: .syncing)
+        context.insert(area)
+        try context.save()
+
+        do {
+            let calendar = try await calendarSyncManager.createCalendar(title: trimmedTitle)
+            let reminderList = try await reminderSyncManager.createReminderList(title: trimmedTitle)
+            area.calendarIdentifier = calendar.id
+            area.calendarTitle = calendar.title
+            area.calendarColorHex = calendar.colorHex
+            area.reminderListIdentifier = reminderList.id
+            area.reminderListTitle = reminderList.title
+            area.syncState = .synced
+            area.updatedAt = Date()
+            try context.save()
+            return area
+        } catch {
+            area.syncState = .failed
+            area.updatedAt = Date()
+            try? context.save()
+            throw error
+        }
+    }
+
     func ensureUnassignedArea() throws -> ProjectArea {
         if let existing = try context.fetch(FetchDescriptor<ProjectArea>()).first(where: { $0.title == "Unassigned" && $0.archivedAt == nil }) {
             return existing
