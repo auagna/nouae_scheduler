@@ -28,8 +28,8 @@ struct CalendarCanvasView: View {
                 )
                 .scaleEffect(zoomScale)
                 .offset(panOffset)
-                .animation(.snappy(duration: 0.18), value: zoomScale)
-                .animation(.snappy(duration: 0.18), value: panOffset)
+                .animation(.easeInOut(duration: 0.18), value: zoomScale)
+                .animation(.easeInOut(duration: 0.18), value: panOffset)
                 .gesture(canvasGesture)
                 .allowsHitTesting(!isDrawingMode)
 
