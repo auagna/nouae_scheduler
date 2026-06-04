@@ -19,6 +19,8 @@ final class ProjectStore {
             calendarIdentifier: area?.calendarIdentifier,
             calendarTitle: area?.calendarTitle,
             calendarColorHex: area?.calendarColorHex,
+            reminderListIdentifier: area?.reminderListIdentifier,
+            reminderListTitle: area?.reminderListTitle,
             syncState: area == nil ? .local : area?.syncState ?? .local
         )
         context.insert(project)
@@ -39,7 +41,9 @@ final class ProjectStore {
             areaId: area?.id,
             calendarIdentifier: area?.calendarIdentifier,
             calendarTitle: area?.calendarTitle,
-            calendarColorHex: area?.calendarColorHex
+            calendarColorHex: area?.calendarColorHex,
+            reminderListIdentifier: area?.reminderListIdentifier,
+            reminderListTitle: area?.reminderListTitle
         )
         context.insert(project)
         createDefaultSections(project: project)
@@ -65,6 +69,8 @@ final class ProjectStore {
         project.calendarIdentifier = area?.calendarIdentifier
         project.calendarTitle = area?.calendarTitle
         project.calendarColorHex = area?.calendarColorHex
+        project.reminderListIdentifier = area?.reminderListIdentifier
+        project.reminderListTitle = area?.reminderListTitle
         project.syncState = area?.syncState ?? .local
         updateProjectUpdatedAt(project: project)
         try context.save()
