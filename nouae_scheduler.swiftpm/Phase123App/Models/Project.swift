@@ -12,6 +12,8 @@ final class Project {
     var calendarIdentifier: String?
     var calendarTitle: String?
     var calendarColorHex: String?
+    var reminderListIdentifier: String?
+    var reminderListTitle: String?
     var syncStateRawValue: String
     var createdAt: Date
     var updatedAt: Date
@@ -27,6 +29,8 @@ final class Project {
         calendarIdentifier: String? = nil,
         calendarTitle: String? = nil,
         calendarColorHex: String? = nil,
+        reminderListIdentifier: String? = nil,
+        reminderListTitle: String? = nil,
         syncState: SyncState = .local,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
@@ -41,6 +45,8 @@ final class Project {
         self.calendarIdentifier = calendarIdentifier
         self.calendarTitle = calendarTitle
         self.calendarColorHex = calendarColorHex
+        self.reminderListIdentifier = reminderListIdentifier
+        self.reminderListTitle = reminderListTitle
         syncStateRawValue = syncState.rawValue
         self.createdAt = createdAt
         self.updatedAt = updatedAt
