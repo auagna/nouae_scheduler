@@ -240,13 +240,17 @@ private struct SensorColumn: View {
 
     private var metrics: [(String, String)] {
         [
-            ("Energy", logs.first?.focusLevel.map { "\($0)/5" } ?? "steady"),
+            ("Energy", latestFocusText),
             ("Mood", "reflection"),
             ("Focus", "\(snapshot.inProgress) active"),
             ("Stress", snapshot.delayedToday == 0 ? "low" : "watch"),
             ("Sleep", "not logged"),
             ("Recovery", "neutral")
         ]
+    }
+
+    private var latestFocusText: String {
+        logs.compactMap(\.focusLevel).first.map { "\($0)/5" } ?? "steady"
     }
 }
 
@@ -342,7 +346,7 @@ private struct CompactStatusStrip: View {
             StatusPill(title: "예정", value: "\(snapshot.planned)", tint: .blue)
             StatusPill(title: "진행", value: "\(snapshot.inProgress)", tint: .orange)
             StatusPill(title: "완료", value: "\(snapshot.completed)", tint: .green)
-            StatusPill(title: "미룸", value: "\(snapshot.delayedToday)", tint: .secondary)
+            StatusPill(title: "미룸", value: "\(snapshot.delayedToday)", tint: .gray)
         }
     }
 }
@@ -371,7 +375,8 @@ private struct SensorMetricGrid: View {
 
     var body: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-            ForEach(metrics, id: \.0) { item in
+            ForEach(metrics.indices, id: \.self) { index in
+                let item = metrics[index]
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.0)
                         .font(.caption)
