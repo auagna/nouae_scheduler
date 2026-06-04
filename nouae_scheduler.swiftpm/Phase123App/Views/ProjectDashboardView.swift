@@ -16,6 +16,7 @@ struct ProjectDashboardView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     ProjectCommandHeaderCard(project: project, progress: progress)
 
+                    #if DEBUG
                     Text("ProjectMissionLayout ACTIVE Phase123")
                         .font(.caption)
                         .fontWeight(.bold)
@@ -23,6 +24,7 @@ struct ProjectDashboardView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(Color.red, in: Capsule())
+                    #endif
 
                     if geometry.size.width >= 880 {
                         HStack(alignment: .top, spacing: 14) {
