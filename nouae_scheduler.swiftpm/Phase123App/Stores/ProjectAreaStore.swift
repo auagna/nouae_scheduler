@@ -77,6 +77,8 @@ final class ProjectAreaStore {
         project.calendarIdentifier = area?.calendarIdentifier
         project.calendarTitle = area?.calendarTitle
         project.calendarColorHex = area?.calendarColorHex
+        project.reminderListIdentifier = area?.reminderListIdentifier
+        project.reminderListTitle = area?.reminderListTitle
 
         try context.save()
     }
