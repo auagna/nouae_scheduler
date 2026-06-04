@@ -2,6 +2,11 @@ import EventKit
 import Foundation
 import SwiftData
 
+struct ReminderListSource: Identifiable {
+    let id: String
+    let title: String
+}
+
 @MainActor
 final class ReminderSyncManager {
     private let eventKit: EventKitManager
@@ -12,6 +17,30 @@ final class ReminderSyncManager {
         self.eventKit = eventKit
         self.context = context
         self.rawTaskStore = rawTaskStore
+    }
+
+    func fetchReminderLists() async throws -> [ReminderListSource] {
+        try await eventKit.requireReminderAccess()
+        return eventKit.eventStore.calendars(for: .reminder)
+            .map { ReminderListSource(id: $0.calendarIdentifier, title: $0.title) }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    func createReminderList(title: String) async throws -> ReminderListSource {
+        try await eventKit.requireReminderAccess()
+        if let existing = eventKit.eventStore.calendars(for: .reminder).first(where: { $0.title == title }) {
+            return ReminderListSource(id: existing.calendarIdentifier, title: existing.title)
+        }
+        guard let source = preferredReminderSource() else { throw SyncError.sourceNotFound }
+        let list = EKCalendar(for: .reminder, eventStore: eventKit.eventStore)
+        list.title = title
+        list.source = source
+        do {
+            try eventKit.eventStore.saveCalendar(list, commit: true)
+        } catch {
+            throw SyncError.reminderListCreationFailed
+        }
+        return ReminderListSource(id: list.calendarIdentifier, title: list.title)
     }
 
     func importInboxReminders() async throws -> Int {
@@ -79,5 +108,11 @@ final class ReminderSyncManager {
                 continuation.resume(returning: reminders ?? [])
             }
         }
+    }
+
+    private func preferredReminderSource() -> EKSource? {
+        eventKit.eventStore.sources.first { $0.sourceType == .calDAV && $0.title.localizedCaseInsensitiveContains("icloud") }
+            ?? eventKit.eventStore.defaultCalendarForNewReminders()?.source
+            ?? eventKit.eventStore.sources.first { $0.sourceType == .local }
     }
 }
