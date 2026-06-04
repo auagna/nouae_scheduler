@@ -22,6 +22,7 @@ struct DashboardView: View {
                             lastSyncText: syncSummary
                         )
 
+                        #if DEBUG
                         Text("MissionControlLayout ACTIVE Phase123")
                             .font(.caption)
                             .fontWeight(.bold)
@@ -29,6 +30,7 @@ struct DashboardView: View {
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
                             .background(Color.red, in: Capsule())
+                        #endif
 
                         if geometry.size.width >= 900 {
                             HStack(alignment: .top, spacing: 14) {
