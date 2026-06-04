@@ -98,12 +98,14 @@ struct PlanView: View {
                 DatePicker("날짜", selection: $boardDate, displayedComponents: .date)
                     .labelsHidden()
                 Spacer()
+                #if DEBUG
                 Text("HourGridPlanBoard ACTIVE")
                     .font(.caption.bold())
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(Color.red, in: Capsule())
+                #endif
             }
             .padding()
 
