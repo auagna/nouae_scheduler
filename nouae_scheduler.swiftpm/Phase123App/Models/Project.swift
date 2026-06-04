@@ -8,6 +8,7 @@ final class Project {
     var typeRawValue: String
     var statusRawValue: String
     var goal: String
+    var areaId: UUID?
     var calendarIdentifier: String?
     var calendarTitle: String?
     var calendarColorHex: String?
@@ -16,12 +17,27 @@ final class Project {
     var updatedAt: Date
     var archivedAt: Date?
 
-    init(id: UUID = UUID(), title: String, type: ProjectType = .personal, status: ProjectStatus = .planning, goal: String = "", calendarIdentifier: String? = nil, calendarTitle: String? = nil, calendarColorHex: String? = nil, syncState: SyncState = .local, createdAt: Date = Date(), updatedAt: Date = Date(), archivedAt: Date? = nil) {
+    init(
+        id: UUID = UUID(),
+        title: String,
+        type: ProjectType = .personal,
+        status: ProjectStatus = .planning,
+        goal: String = "",
+        areaId: UUID? = nil,
+        calendarIdentifier: String? = nil,
+        calendarTitle: String? = nil,
+        calendarColorHex: String? = nil,
+        syncState: SyncState = .local,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date(),
+        archivedAt: Date? = nil
+    ) {
         self.id = id
         self.title = title
         typeRawValue = type.rawValue
         statusRawValue = status.rawValue
         self.goal = goal
+        self.areaId = areaId
         self.calendarIdentifier = calendarIdentifier
         self.calendarTitle = calendarTitle
         self.calendarColorHex = calendarColorHex
@@ -33,7 +49,18 @@ final class Project {
 }
 
 extension Project {
-    var type: ProjectType { get { ProjectType(rawValue: typeRawValue) ?? .personal } set { typeRawValue = newValue.rawValue } }
-    var status: ProjectStatus { get { ProjectStatus(rawValue: statusRawValue) ?? .planning } set { statusRawValue = newValue.rawValue } }
-    var syncState: SyncState { get { SyncState(rawValue: syncStateRawValue) ?? .local } set { syncStateRawValue = newValue.rawValue } }
+    var type: ProjectType {
+        get { ProjectType(rawValue: typeRawValue) ?? .personal }
+        set { typeRawValue = newValue.rawValue }
+    }
+
+    var status: ProjectStatus {
+        get { ProjectStatus(rawValue: statusRawValue) ?? .planning }
+        set { statusRawValue = newValue.rawValue }
+    }
+
+    var syncState: SyncState {
+        get { SyncState(rawValue: syncStateRawValue) ?? .local }
+        set { syncStateRawValue = newValue.rawValue }
+    }
 }
