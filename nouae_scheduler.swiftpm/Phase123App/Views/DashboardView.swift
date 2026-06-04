@@ -15,68 +15,98 @@ struct DashboardView: View {
     var body: some View {
         NavigationStack {
             GeometryReader { geometry in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        MissionControlHeader(
-                            summary: operationSummary,
-                            lastSyncText: syncSummary
-                        )
+                AppScreenContainer(spacing: AppUI.Spacing.section) {
+                    MissionControlHeader(
+                        summary: operationSummary,
+                        syncText: syncSummary,
+                        syncTone: syncTone
+                    )
 
-                        #if DEBUG
-                        Text("MissionControlLayout ACTIVE Phase123")
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.red, in: Capsule())
-                        #endif
+                    #if DEBUG
+                    Text("MissionControlLayout ACTIVE Phase123")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.red, in: Capsule())
+                    #endif
 
-                        if geometry.size.width >= 900 {
-                            HStack(alignment: .top, spacing: 14) {
-                                SensorColumn(
-                                    snapshot: snapshot,
-                                    projects: activeProjects,
-                                    logs: logs
-                                )
-                                .frame(width: geometry.size.width * 0.25)
-
-                                CommandCenterColumn(
-                                    mission: currentMission,
-                                    nextAction: nextAction,
-                                    blocks: todayBlocks,
-                                    projects: projects
-                                )
-                                .frame(width: geometry.size.width * 0.42)
-
-                                IntelligenceColumn(
-                                    insights: localInsights,
-                                    attentionItems: attentionItems
-                                )
-                                .frame(maxWidth: .infinity)
-                            }
-                        } else {
-                            VStack(alignment: .leading, spacing: 14) {
-                                CommandCenterColumn(
-                                    mission: currentMission,
-                                    nextAction: nextAction,
-                                    blocks: todayBlocks,
-                                    projects: projects
-                                )
-                                SensorColumn(snapshot: snapshot, projects: activeProjects, logs: logs)
-                                IntelligenceColumn(insights: localInsights, attentionItems: attentionItems)
-                            }
-                        }
-
-                        FlowMatrixPreviewCard(relations: flowRelations)
-
-                        SampleDataControls(message: message, seed: seed, remove: removeSampleData)
+                    if geometry.size.width >= 900 {
+                        desktopLayout(width: geometry.size.width)
+                    } else {
+                        compactLayout
                     }
-                    .padding(18)
+
+                    FlowMatrixPreview(relations: flowRelations)
+                    sampleDataPanel
                 }
-                .background(Color(uiColor: .systemGroupedBackground))
             }
-            .navigationTitle("Mission Control")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private func desktopLayout(width: CGFloat) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            SensorPanel(
+                snapshot: snapshot,
+                lifePulse: lifePulse,
+                metrics: sensorMetrics,
+                projects: activeProjects,
+                showsLifePulse: true
+            )
+            .frame(width: max(230, width * 0.24))
+
+            CommandCenterPanel(
+                mission: currentMission,
+                nextAction: nextAction,
+                blocks: todayBlocks,
+                projects: projects
+            )
+            .frame(width: max(360, width * 0.43))
+
+            IntelligencePanel(
+                insights: localInsights,
+                attentionItems: attentionItems
+            )
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var compactLayout: some View {
+        VStack(alignment: .leading, spacing: AppUI.Spacing.section) {
+            CommandCenterPanel(
+                mission: currentMission,
+                nextAction: nextAction,
+                blocks: todayBlocks,
+                projects: projects
+            )
+            LifePulseCard(value: lifePulse)
+            SensorPanel(
+                snapshot: snapshot,
+                lifePulse: lifePulse,
+                metrics: sensorMetrics,
+                projects: activeProjects,
+                showsLifePulse: false
+            )
+            IntelligencePanel(
+                insights: localInsights,
+                attentionItems: attentionItems
+            )
+        }
+    }
+
+    private var sampleDataPanel: some View {
+        AppPanel(title: "Development Data", subtitle: "Swift Playgrounds 테스트용") {
+            HStack {
+                Button("샘플 데이터 생성", action: seed)
+                Button("샘플 데이터 제거", role: .destructive, action: removeSampleData)
+            }
+            if let message {
+                AppDivider()
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -121,6 +151,10 @@ struct DashboardView: View {
         return failedProjects + failedBlocks == 0 ? "Sync stable" : "Sync attention \(failedProjects + failedBlocks)"
     }
 
+    private var syncTone: StatusBadge.Tone {
+        projects.contains { $0.syncState == .failed } || blocks.contains { $0.syncState == .failed } ? .orange : .green
+    }
+
     private var nextAction: WorkBlock? {
         let now = Date()
         return todayBlocks
@@ -143,13 +177,14 @@ struct DashboardView: View {
 
     private var localInsights: [DashboardInsight] {
         var insights: [DashboardInsight] = []
-        if activeProjects.contains(where: { project in !blocks.contains(where: { $0.projectId == project.id && $0.startAt > Calendar.current.date(byAdding: .day, value: -7, to: Date())! }) }) {
+        let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        if activeProjects.contains(where: { project in !blocks.contains(where: { $0.projectId == project.id && $0.startAt > weekAgo }) }) {
             insights.append(.init(type: "Blind Spot", title: "움직이지 않는 active project", message: "active 상태지만 최근 7일간 WorkBlock이 없는 프로젝트가 있습니다."))
         }
         if blocks.filter({ $0.executionState == .delayed }).count >= 3 {
             insights.append(.init(type: "Adjustment", title: "미룸 흐름 증가", message: "미룸이 누적되고 있습니다. 긴 블록보다 짧은 실행 단위가 적합할 수 있습니다."))
         }
-        if logs.filter({ Calendar.current.isDate($0.createdAt, equalTo: Date(), toGranularity: .weekOfYear) }).count == 0 {
+        if logs.filter({ Calendar.current.isDate($0.createdAt, equalTo: Date(), toGranularity: .weekOfYear) }).isEmpty {
             insights.append(.init(type: "Pattern", title: "회고 데이터 부족", message: "이번 주 Log가 아직 적습니다. 짧은 기록 하나가 다음 조정의 재료가 됩니다."))
         }
         if insights.isEmpty {
@@ -159,7 +194,36 @@ struct DashboardView: View {
     }
 
     private var flowRelations: [String] {
-        ["Plan → WorkBlock", "WorkBlock → Log", "Log → Adjustment", "Project → Synthesis"]
+        ["Plan -> WorkBlock", "WorkBlock -> Log", "Log -> Adjustment", "Project -> Synthesis"]
+    }
+
+    private var lifePulse: Int {
+        let complete = snapshot.completed * 12
+        let progress = snapshot.inProgress * 8
+        let delayedPenalty = snapshot.delayedToday * 8
+        let logSignal = min(logs.count, 4) * 5
+        return min(100, max(20, 52 + complete + progress + logSignal - delayedPenalty))
+    }
+
+    private var sensorMetrics: [DashboardMetric] {
+        [
+            .init(title: "Energy", value: latestFocusText),
+            .init(title: "Focus", value: "\(snapshot.inProgress) active"),
+            .init(title: "Mood", value: "reflection"),
+            .init(title: "Weekly Momentum", value: "\(snapshot.completed) done"),
+            .init(title: "Completion Rate", value: completionRateText),
+            .init(title: "Inbox", value: "\(inboxCount)")
+        ]
+    }
+
+    private var latestFocusText: String {
+        logs.compactMap(\.focusLevel).first.map { "\($0)/5" } ?? "steady"
+    }
+
+    private var completionRateText: String {
+        let total = snapshot.planned + snapshot.inProgress + snapshot.completed + snapshot.delayedToday
+        guard total > 0 else { return "0%" }
+        return "\(Int((Double(snapshot.completed) / Double(total)) * 100))%"
     }
 
     private func seed() {
@@ -178,452 +242,5 @@ struct DashboardView: View {
         } catch {
             message = error.localizedDescription
         }
-    }
-}
-
-private struct DashboardInsight: Identifiable {
-    let id = UUID()
-    let type: String
-    let title: String
-    let message: String
-}
-
-private struct MissionControlHeader: View {
-    let summary: String
-    let lastSyncText: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Mission Control")
-                        .font(.largeTitle.weight(.bold))
-                    Text(summary)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(Date(), style: .date)
-                        .font(.subheadline.weight(.semibold))
-                    Text(lastSyncText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .padding(18)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-}
-
-private struct SensorColumn: View {
-    let snapshot: DashboardSnapshot
-    let projects: [Project]
-    let logs: [ProjectLog]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            DashboardPanelTitle("Sensor", subtitle: "현재 상태 감지")
-            LifePulseCard(value: lifePulse)
-            CompactStatusStrip(snapshot: snapshot)
-            SensorMetricGrid(metrics: metrics)
-            ActiveProjectCompactList(projects: projects)
-        }
-    }
-
-    private var lifePulse: Int {
-        let complete = snapshot.completed * 12
-        let progress = snapshot.inProgress * 8
-        let delayedPenalty = snapshot.delayedToday * 8
-        let logSignal = min(logs.count, 4) * 5
-        return min(100, max(20, 52 + complete + progress + logSignal - delayedPenalty))
-    }
-
-    private var metrics: [(String, String)] {
-        [
-            ("Energy", latestFocusText),
-            ("Mood", "reflection"),
-            ("Focus", "\(snapshot.inProgress) active"),
-            ("Stress", snapshot.delayedToday == 0 ? "low" : "watch"),
-            ("Sleep", "not logged"),
-            ("Recovery", "neutral")
-        ]
-    }
-
-    private var latestFocusText: String {
-        logs.compactMap(\.focusLevel).first.map { "\($0)/5" } ?? "steady"
-    }
-}
-
-private struct CommandCenterColumn: View {
-    let mission: String
-    let nextAction: WorkBlock?
-    let blocks: [WorkBlock]
-    let projects: [Project]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            DashboardPanelTitle("Command Center", subtitle: "지금 움직일 흐름")
-            CurrentMissionCard(text: mission)
-            if let nextAction {
-                NextActionCard(block: nextAction, projectTitle: projectTitle(for: nextAction))
-            }
-            TodayBlocksCompactList(blocks: blocks, projects: projects)
-            DeepWorkPlaceholder()
-        }
-    }
-
-    private func projectTitle(for block: WorkBlock) -> String? {
-        projects.first { $0.id == block.projectId }?.title
-    }
-}
-
-private struct IntelligenceColumn: View {
-    let insights: [DashboardInsight]
-    let attentionItems: [String]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            DashboardPanelTitle("Intelligence", subtitle: "패턴과 조정")
-            ForEach(insights) { insight in
-                InsightPreviewCard(insight: insight)
-            }
-            AttentionCard(items: attentionItems)
-        }
-    }
-}
-
-private struct DashboardPanelTitle: View {
-    let title: String
-    let subtitle: String
-
-    init(_ title: String, subtitle: String) {
-        self.title = title
-        self.subtitle = subtitle
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.headline)
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
-private struct LifePulseCard: View {
-    let value: Int
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Life Pulse")
-                    .font(.headline)
-                Spacer()
-                Text("\(value)")
-                    .font(.title.weight(.bold))
-            }
-            ProgressView(value: Double(value), total: 100)
-                .tint(.blue)
-            HStack {
-                Label("Energy", systemImage: "bolt.fill")
-                Spacer()
-                Label("Focus", systemImage: "scope")
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-        .dashboardCard()
-    }
-}
-
-private struct CompactStatusStrip: View {
-    let snapshot: DashboardSnapshot
-
-    var body: some View {
-        HStack(spacing: 8) {
-            StatusPill(title: "예정", value: "\(snapshot.planned)", tint: .blue)
-            StatusPill(title: "진행", value: "\(snapshot.inProgress)", tint: .orange)
-            StatusPill(title: "완료", value: "\(snapshot.completed)", tint: .green)
-            StatusPill(title: "미룸", value: "\(snapshot.delayedToday)", tint: .gray)
-        }
-    }
-}
-
-private struct StatusPill: View {
-    let title: String
-    let value: String
-    let tint: Color
-
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.headline)
-            Text(title)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-}
-
-private struct SensorMetricGrid: View {
-    let metrics: [(String, String)]
-
-    var body: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-            ForEach(metrics.indices, id: \.self) { index in
-                let item = metrics[index]
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(item.0)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(item.1)
-                        .font(.subheadline.weight(.semibold))
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(10)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-        }
-        .dashboardCard()
-    }
-}
-
-private struct ActiveProjectCompactList: View {
-    let projects: [Project]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Active Projects")
-                .font(.subheadline.weight(.semibold))
-            if projects.isEmpty {
-                Text("active project가 없습니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            ForEach(projects.prefix(5)) { project in
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(Color(calendarHex: project.calendarColorHex))
-                        .frame(width: 8, height: 8)
-                    Text(project.title)
-                        .font(.caption)
-                    Spacer()
-                    Text(project.status.title)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .dashboardCard()
-    }
-}
-
-private struct CurrentMissionCard: View {
-    let text: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Current Mission")
-                .font(.headline)
-            Text(text)
-                .font(.title3.weight(.semibold))
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .dashboardCard(accent: .blue)
-    }
-}
-
-private struct NextActionCard: View {
-    let block: WorkBlock
-    let projectTitle: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Next Action")
-                .font(.headline)
-            Text(block.title)
-                .font(.title3.weight(.semibold))
-            Text(timeText)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            if let projectTitle {
-                Text(projectTitle)
-                    .font(.caption)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.thinMaterial, in: Capsule())
-            }
-        }
-        .dashboardCard(accent: .orange)
-    }
-
-    private var timeText: String {
-        block.startAt.formatted(date: .omitted, time: .shortened) + " - " + block.endAt.formatted(date: .omitted, time: .shortened)
-    }
-}
-
-private struct TodayBlocksCompactList: View {
-    let blocks: [WorkBlock]
-    let projects: [Project]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Today’s Time Blocks")
-                .font(.headline)
-            if blocks.isEmpty {
-                Text("오늘 배치된 WorkBlock이 없습니다.")
-                    .foregroundStyle(.secondary)
-            }
-            ForEach(blocks.prefix(8)) { block in
-                HStack(spacing: 10) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(projectColor(for: block))
-                        .frame(width: 4)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(block.title)
-                            .font(.subheadline.weight(.semibold))
-                        Text(block.startAt.formatted(date: .omitted, time: .shortened) + " - " + block.endAt.formatted(date: .omitted, time: .shortened))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Text(block.executionState.title)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 4)
-            }
-        }
-        .dashboardCard()
-    }
-
-    private func project(for block: WorkBlock) -> Project? {
-        projects.first { $0.id == block.projectId }
-    }
-
-    private func projectColor(for block: WorkBlock) -> Color {
-        Color(calendarHex: project(for: block)?.calendarColorHex)
-    }
-}
-
-private struct DeepWorkPlaceholder: View {
-    var body: some View {
-        HStack {
-            Label("Deep Work Timer", systemImage: "timer")
-            Spacer()
-            Text("ready later")
-                .foregroundStyle(.secondary)
-        }
-        .font(.caption)
-        .dashboardCard()
-    }
-}
-
-private struct InsightPreviewCard: View {
-    let insight: DashboardInsight
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(insight.type)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text(insight.title)
-                .font(.subheadline.weight(.semibold))
-            Text(insight.message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .dashboardCard()
-    }
-}
-
-private struct AttentionCard: View {
-    let items: [String]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Attention")
-                .font(.headline)
-            ForEach(items, id: \.self) { item in
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "smallcircle.filled.circle")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                    Text(item)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .dashboardCard()
-    }
-}
-
-private struct FlowMatrixPreviewCard: View {
-    let relations: [String]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            DashboardPanelTitle("Flow Matrix", subtitle: "행동과 결과의 관계")
-            HStack(spacing: 10) {
-                ForEach(relations, id: \.self) { relation in
-                    Text(relation)
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-            }
-        }
-        .dashboardCard()
-    }
-}
-
-private struct SampleDataControls: View {
-    let message: String?
-    let seed: () -> Void
-    let remove: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Button("샘플 데이터 생성", action: seed)
-                Button("샘플 데이터 제거", role: .destructive, action: remove)
-            }
-            if let message {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .dashboardCard()
-    }
-}
-
-private extension View {
-    func dashboardCard(accent: Color? = nil) -> some View {
-        self
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(uiColor: .systemBackground))
-            }
-            .overlay(alignment: .leading) {
-                if let accent {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(accent)
-                        .frame(width: 4)
-                        .padding(.vertical, 14)
-                }
-            }
     }
 }
