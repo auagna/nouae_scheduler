@@ -4,6 +4,7 @@ enum SyncError: LocalizedError {
     case permissionDenied
     case reminderPermissionDenied
     case calendarCreationFailed
+    case reminderListCreationFailed
     case calendarNotFound
     case reminderCalendarNotFound
     case sourceNotFound
@@ -19,6 +20,8 @@ enum SyncError: LocalizedError {
             return "미리알림 전체 접근 권한이 필요합니다. iPad 설정에서 nou ae의 미리알림 접근을 허용해 주세요."
         case .calendarCreationFailed:
             return "Apple Calendar를 생성하지 못했습니다."
+        case .reminderListCreationFailed:
+            return "Apple Reminders List를 생성하지 못했습니다."
         case .calendarNotFound:
             return "연결된 Apple Calendar를 찾지 못했습니다. 프로젝트 연결 상태를 확인해 주세요."
         case .reminderCalendarNotFound:
