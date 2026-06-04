@@ -231,9 +231,9 @@ private struct SensorColumn: View {
     }
 
     private var lifePulse: Int {
-        let complete = (Int(snapshot.completed) ?? 0) * 12
-        let progress = (Int(snapshot.inProgress) ?? 0) * 8
-        let delayedPenalty = (Int(snapshot.delayedToday) ?? 0) * 8
+        let complete = snapshot.completed * 12
+        let progress = snapshot.inProgress * 8
+        let delayedPenalty = snapshot.delayedToday * 8
         let logSignal = min(logs.count, 4) * 5
         return min(100, max(20, 52 + complete + progress + logSignal - delayedPenalty))
     }
@@ -243,7 +243,7 @@ private struct SensorColumn: View {
             ("Energy", logs.first?.focusLevel.map { "\($0)/5" } ?? "steady"),
             ("Mood", "reflection"),
             ("Focus", "\(snapshot.inProgress) active"),
-            ("Stress", snapshot.delayedToday == "0" ? "low" : "watch"),
+            ("Stress", snapshot.delayedToday == 0 ? "low" : "watch"),
             ("Sleep", "not logged"),
             ("Recovery", "neutral")
         ]
@@ -339,10 +339,10 @@ private struct CompactStatusStrip: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            StatusPill(title: "예정", value: snapshot.planned, tint: .blue)
-            StatusPill(title: "진행", value: snapshot.inProgress, tint: .orange)
-            StatusPill(title: "완료", value: snapshot.completed, tint: .green)
-            StatusPill(title: "미룸", value: snapshot.delayedToday, tint: .secondary)
+            StatusPill(title: "예정", value: "\(snapshot.planned)", tint: .blue)
+            StatusPill(title: "진행", value: "\(snapshot.inProgress)", tint: .orange)
+            StatusPill(title: "완료", value: "\(snapshot.completed)", tint: .green)
+            StatusPill(title: "미룸", value: "\(snapshot.delayedToday)", tint: .secondary)
         }
     }
 }
@@ -403,7 +403,7 @@ private struct ActiveProjectCompactList: View {
             ForEach(projects.prefix(5)) { project in
                 HStack(spacing: 8) {
                     Circle()
-                        .fill(project.calendarColor)
+                        .fill(Color(calendarHex: project.calendarColorHex))
                         .frame(width: 8, height: 8)
                     Text(project.title)
                         .font(.caption)
@@ -477,7 +477,7 @@ private struct TodayBlocksCompactList: View {
             ForEach(blocks.prefix(8)) { block in
                 HStack(spacing: 10) {
                     RoundedRectangle(cornerRadius: 3)
-                        .fill(project(for: block)?.calendarColor ?? Color.blue)
+                        .fill(projectColor(for: block))
                         .frame(width: 4)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(block.title)
@@ -499,6 +499,10 @@ private struct TodayBlocksCompactList: View {
 
     private func project(for block: WorkBlock) -> Project? {
         projects.first { $0.id == block.projectId }
+    }
+
+    private func projectColor(for block: WorkBlock) -> Color {
+        Color(calendarHex: project(for: block)?.calendarColorHex)
     }
 }
 
@@ -614,11 +618,5 @@ private extension View {
                         .padding(.vertical, 14)
                 }
             }
-    }
-}
-
-private extension Project {
-    var calendarColor: Color {
-        Color(calendarHex: calendarColorHex)
     }
 }
