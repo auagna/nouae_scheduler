@@ -6,6 +6,7 @@ final class ProjectStore {
     private let context: ModelContext
     init(context: ModelContext) { self.context = context }
 
+    @available(*, deprecated, message: "Use createProjectInArea once Area routing is fully enabled.")
     func createProject(title: String, type: ProjectType, status: ProjectStatus, goal: String, calendarSyncManager: CalendarSyncManager) async throws -> Project {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         try validateUniqueActiveTitle(trimmedTitle)
@@ -32,10 +33,41 @@ final class ProjectStore {
         return project
     }
 
-    func createLocalProject(title: String, type: ProjectType = .personal, status: ProjectStatus = .planning, goal: String = "") throws -> Project {
+    func createProjectInArea(title: String, type: ProjectType, status: ProjectStatus, goal: String, area: ProjectArea?) throws -> Project {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { throw SyncError.invalidTitle }
         try validateUniqueActiveTitle(trimmedTitle)
-        let project = Project(title: trimmedTitle, type: type, status: status, goal: goal)
+        let project = Project(
+            title: trimmedTitle,
+            type: type,
+            status: status,
+            goal: goal,
+            areaId: area?.id,
+            calendarIdentifier: area?.calendarIdentifier,
+            calendarTitle: area?.calendarTitle,
+            calendarColorHex: area?.calendarColorHex,
+            syncState: area == nil ? .local : area?.syncState ?? .local
+        )
+        context.insert(project)
+        createDefaultSections(project: project)
+        try context.save()
+        return project
+    }
+
+    func createLocalProject(title: String, type: ProjectType = .personal, status: ProjectStatus = .planning, goal: String = "", area: ProjectArea? = nil) throws -> Project {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { throw SyncError.invalidTitle }
+        try validateUniqueActiveTitle(trimmedTitle)
+        let project = Project(
+            title: trimmedTitle,
+            type: type,
+            status: status,
+            goal: goal,
+            areaId: area?.id,
+            calendarIdentifier: area?.calendarIdentifier,
+            calendarTitle: area?.calendarTitle,
+            calendarColorHex: area?.calendarColorHex
+        )
         context.insert(project)
         createDefaultSections(project: project)
         try context.save()
@@ -51,6 +83,16 @@ final class ProjectStore {
 
     func updateProjectGoal(project: Project, goal: String) throws {
         project.goal = goal
+        updateProjectUpdatedAt(project: project)
+        try context.save()
+    }
+
+    func assignProject(_ project: Project, to area: ProjectArea?) throws {
+        project.areaId = area?.id
+        project.calendarIdentifier = area?.calendarIdentifier
+        project.calendarTitle = area?.calendarTitle
+        project.calendarColorHex = area?.calendarColorHex
+        project.syncState = area?.syncState ?? .local
         updateProjectUpdatedAt(project: project)
         try context.save()
     }
