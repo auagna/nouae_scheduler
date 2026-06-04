@@ -1,5 +1,7 @@
-import PencilKit
 import SwiftUI
+
+#if canImport(PencilKit) && canImport(UIKit)
+import PencilKit
 
 struct CalendarDrawingOverlay: UIViewRepresentable {
     @Binding var data: Data
@@ -10,14 +12,21 @@ struct CalendarDrawingOverlay: UIViewRepresentable {
         canvas.isOpaque = false
         canvas.drawingPolicy = .pencilOnly
         canvas.delegate = context.coordinator
-        if let drawing = try? PKDrawing(data: data) {
+
+        if !data.isEmpty, let drawing = try? PKDrawing(data: data) {
             canvas.drawing = drawing
         }
         return canvas
     }
 
     func updateUIView(_ uiView: PKCanvasView, context: Context) {
-        guard let drawing = try? PKDrawing(data: data), uiView.drawing.dataRepresentation() != data else { return }
+        guard !data.isEmpty else {
+            uiView.drawing = PKDrawing()
+            return
+        }
+
+        guard uiView.drawing.dataRepresentation() != data,
+              let drawing = try? PKDrawing(data: data) else { return }
         uiView.drawing = drawing
     }
 
@@ -37,3 +46,25 @@ struct CalendarDrawingOverlay: UIViewRepresentable {
         }
     }
 }
+#else
+struct CalendarDrawingOverlay: View {
+    @Binding var data: Data
+
+    var body: some View {
+        ZStack {
+            Color.clear
+            VStack(spacing: 8) {
+                Image(systemName: "pencil.tip")
+                    .font(.title2)
+                Text("Drawing Mode")
+                    .font(.headline)
+                Text("Apple Pencil drawing is unavailable in this runtime.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding()
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
+}
+#endif
