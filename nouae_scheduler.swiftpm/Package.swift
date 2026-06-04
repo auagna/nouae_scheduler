@@ -12,7 +12,7 @@ let package = Package(
             bundleIdentifier: "com.auagna.nouae-scheduler.phase123",
             teamIdentifier: "",
             displayVersion: "1.0",
-            bundleVersion: "15",
+            bundleVersion: "16",
             appIcon: .placeholder(icon: .calendar),
             accentColor: .presetColor(.blue),
             supportedDeviceFamilies: [.pad, .phone],
