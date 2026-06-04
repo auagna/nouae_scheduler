@@ -132,6 +132,26 @@ final class CalendarSyncManager {
         try context.save()
     }
 
+    func updateEvent(identifier: String, title: String, startAt: Date, endAt: Date) async throws {
+        try await eventKit.requireCalendarAccess()
+        guard endAt > startAt else { throw SyncError.invalidTimeRange }
+        guard let event = eventKit.eventStore.event(withIdentifier: identifier) else {
+            throw SyncError.calendarNotFound
+        }
+        event.title = title
+        event.startDate = startAt
+        event.endDate = endAt
+        try eventKit.eventStore.save(event, span: .thisEvent, commit: true)
+    }
+
+    func deleteEvent(identifier: String) async throws {
+        try await eventKit.requireCalendarAccess()
+        guard let event = eventKit.eventStore.event(withIdentifier: identifier) else {
+            throw SyncError.calendarNotFound
+        }
+        try eventKit.eventStore.remove(event, span: .thisEvent, commit: true)
+    }
+
     func archiveProjectsWithMissingCalendars(context: ModelContext) async throws {
         try await eventKit.requireCalendarAccess()
         let ids = Set(eventKit.eventStore.calendars(for: .event).map(\.calendarIdentifier))
