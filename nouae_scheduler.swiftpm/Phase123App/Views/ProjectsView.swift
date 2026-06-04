@@ -110,6 +110,7 @@ struct ProjectsView: View {
 struct AddProjectView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var stores: AppStores
+    @EnvironmentObject private var services: AppServices
     @Query(sort: \ProjectArea.updatedAt, order: .reverse) private var areas: [ProjectArea]
 
     @State private var title = ""
@@ -119,6 +120,7 @@ struct AddProjectView: View {
     @State private var selectedAreaId: UUID?
     @State private var newAreaTitle = ""
     @State private var isCreating = false
+    @State private var isCreatingArea = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -145,9 +147,9 @@ struct AddProjectView: View {
                     HStack {
                         TextField("새 Area 이름", text: $newAreaTitle)
                         Button("추가") { createArea() }
-                            .disabled(newAreaTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .disabled(isCreatingArea || newAreaTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
-                    Text("이번 단계의 Area는 로컬 구조입니다. Apple Calendar / Reminder List 자동 생성은 다음 단계에서 연결합니다.")
+                    Text("Area를 만들면 같은 이름의 Apple Calendar와 Apple Reminder List를 함께 생성합니다.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -173,13 +175,21 @@ struct AddProjectView: View {
     }
 
     private func createArea() {
-        do {
-            let area = try stores.projectAreaStore.createLocalArea(title: newAreaTitle)
-            selectedAreaId = area.id
-            newAreaTitle = ""
-            errorMessage = nil
-        } catch {
-            errorMessage = error.localizedDescription
+        isCreatingArea = true
+        Task {
+            defer { isCreatingArea = false }
+            do {
+                let area = try await stores.projectAreaStore.createArea(
+                    title: newAreaTitle,
+                    calendarSyncManager: services.calendarSync,
+                    reminderSyncManager: services.reminderSync
+                )
+                selectedAreaId = area.id
+                newAreaTitle = ""
+                errorMessage = nil
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
