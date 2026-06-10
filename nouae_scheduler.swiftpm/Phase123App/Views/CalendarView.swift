@@ -18,7 +18,7 @@ struct CalendarView: View {
     @Query(sort: \Project.updatedAt, order: .reverse) private var projects: [Project]
     @Query(sort: \WorkBlock.startAt) private var blocks: [WorkBlock]
 
-    @State private var viewType: CalendarViewType = .canvas
+    @State private var viewType: CalendarViewType = .month
     @State private var selectedDate = Date()
     @State private var calendars: [CalendarSource] = []
     @State private var selectedCalendarIds: Set<String> = []
