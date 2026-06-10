@@ -9,12 +9,12 @@ final class EventKitManager: ObservableObject {
 
     var hasFullAccess: Bool {
         if #available(iOS 17.0, *) { return authorizationStatus == .fullAccess }
-        return authorizationStatus == .authorized
+        return authorizationStatus.rawValue == 3
     }
 
     var hasReminderFullAccess: Bool {
         if #available(iOS 17.0, *) { return reminderAuthorizationStatus == .fullAccess }
-        return reminderAuthorizationStatus == .authorized
+        return reminderAuthorizationStatus.rawValue == 3
     }
 
     func requireCalendarAccess() async throws {
