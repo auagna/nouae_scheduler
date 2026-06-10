@@ -33,8 +33,30 @@ struct CalendarHeader: View {
                     .accessibilityLabel("Drawing Mode")
                 }
 
-                StatusBadge(syncTone == .green ? "Synced" : "Attention", tone: syncTone, symbolName: "calendar")
+                StatusBadge(syncStatusText, tone: syncTone, symbolName: syncStatusSymbolName)
             }
+        }
+    }
+
+    private var syncStatusText: String {
+        switch syncTone {
+        case .green:
+            return "Synced"
+        case .orange, .red:
+            return "Attention"
+        default:
+            return "Calendar"
+        }
+    }
+
+    private var syncStatusSymbolName: String {
+        switch syncTone {
+        case .green:
+            return "checkmark.circle"
+        case .orange, .red:
+            return "exclamationmark.circle"
+        default:
+            return "calendar"
         }
     }
 }
