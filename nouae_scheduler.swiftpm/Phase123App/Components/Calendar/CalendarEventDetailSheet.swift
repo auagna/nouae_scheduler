@@ -30,8 +30,10 @@ struct CalendarEventDetailSheet: View {
 
                 if let project {
                     Section("Project") {
-                        NavigationLink(project.title) {
-                            ProjectDashboardView(project: project)
+                        HStack {
+                            Text(project.title)
+                            Spacer()
+                            StatusBadge("Project", tone: .purple, symbolName: "folder")
                         }
                     }
                 }
