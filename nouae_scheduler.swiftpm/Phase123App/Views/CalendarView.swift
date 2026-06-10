@@ -13,6 +13,7 @@ enum CalendarViewType: String, CaseIterable, Identifiable {
 }
 
 struct CalendarView: View {
+    @Environment(\.modelContext) private var context
     @EnvironmentObject private var services: AppServices
     @EnvironmentObject private var stores: AppStores
     @Query(sort: \Project.updatedAt, order: .reverse) private var projects: [Project]
