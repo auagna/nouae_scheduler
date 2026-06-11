@@ -37,7 +37,7 @@ struct OnboardingView: View {
                     .buttonStyle(.bordered)
                 }
 
-                ProgressView(value: Double(step.rawValue.advanced(by: 1)), total: Double(OnboardingStep.allCases.count))
+                ProgressView(value: Double(currentStepNumber), total: Double(OnboardingStep.allCases.count))
 
                 AppPanel(title: panelTitle, subtitle: panelSubtitle) {
                     stepContent
@@ -175,9 +175,17 @@ struct OnboardingView: View {
             hasCompletedOnboarding = true
             return
         }
-        if let next = OnboardingStep(rawValue: step.rawValue.advanced(by: 1)) {
+        if let next = OnboardingStep(rawValue: nextStepRawValue) {
             step = next
         }
+    }
+
+    private var currentStepNumber: Int {
+        step.rawValue.advanced(by: 1)
+    }
+
+    private var nextStepRawValue: Int {
+        step.rawValue.advanced(by: 1)
     }
 
     private func requestCalendarPermission() async {
@@ -221,7 +229,7 @@ struct OnboardingView: View {
 
     private func createFirstProject() async {
         await run {
-            let area = selectedAreaId.flatMap { id in areas.first { $0.id == id } } ?? areas.first
+            let area = selectedArea()
             let project = try stores.projectStore.createProjectInArea(
                 title: projectTitle,
                 type: .study,
@@ -238,7 +246,8 @@ struct OnboardingView: View {
 
     private func createFirstRawTask() async {
         await run {
-            let task = try stores.rawTaskStore.createRawTask(title: rawTaskTitle, projectId: selectedProjectId ?? projects.first?.id)
+            let projectId = selectedProjectIdentifier()
+            let task = try stores.rawTaskStore.createRawTask(title: rawTaskTitle, projectId: projectId)
             try? await services.reminderSync.exportRawTask(task)
             hasCreatedFirstRawTask = true
             message = "\(task.title) RawTask를 만들었습니다."
@@ -247,7 +256,7 @@ struct OnboardingView: View {
 
     private func createFirstWorkBlock() async {
         await run {
-            let project = selectedProjectId.flatMap { id in projects.first { $0.id == id } } ?? projects.first
+            let project = selectedProject()
             let task: RawTask
             if let existingTask = rawTasks.first(where: { !$0.isConvertedToBlock }) {
                 task = existingTask
@@ -264,6 +273,31 @@ struct OnboardingView: View {
             hasCreatedFirstWorkBlock = true
             message = "\(block.title) WorkBlock을 09:00에 배치했습니다."
         }
+    }
+
+    private func selectedArea() -> ProjectArea? {
+        if let selectedAreaId {
+            for area in areas where area.id == selectedAreaId {
+                return area
+            }
+        }
+        return areas.first
+    }
+
+    private func selectedProject() -> Project? {
+        if let selectedProjectId {
+            for project in projects where project.id == selectedProjectId {
+                return project
+            }
+        }
+        return projects.first
+    }
+
+    private func selectedProjectIdentifier() -> UUID? {
+        if let selectedProjectId {
+            return selectedProjectId
+        }
+        return projects.first?.id
     }
 
     private func run(_ operation: @escaping () async throws -> Void) async {
