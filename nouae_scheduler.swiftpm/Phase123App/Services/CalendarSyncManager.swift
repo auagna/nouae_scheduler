@@ -144,6 +144,38 @@ final class CalendarSyncManager {
         try eventKit.eventStore.save(event, span: .thisEvent, commit: true)
     }
 
+    @discardableResult
+    func createEvent(
+        title: String,
+        location: String,
+        isAllDay: Bool,
+        startAt: Date,
+        endAt: Date,
+        calendarIdentifier: String?,
+        projectId: UUID?,
+        urlString: String,
+        notes: String
+    ) async throws -> String {
+        try await eventKit.requireCalendarAccess()
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { throw SyncError.invalidTitle }
+        guard isAllDay || endAt > startAt else { throw SyncError.invalidTimeRange }
+
+        let event = EKEvent(eventStore: eventKit.eventStore)
+        event.title = trimmedTitle
+        event.location = location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : location
+        event.isAllDay = isAllDay
+        event.startDate = startAt
+        event.endDate = endAt
+        event.calendar = try await targetCalendar(projectId: projectId, calendarIdentifier: calendarIdentifier)
+        event.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notes
+        if let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            event.url = url
+        }
+        try eventKit.eventStore.save(event, span: .thisEvent, commit: true)
+        return event.eventIdentifier ?? event.calendarItemIdentifier
+    }
+
     func deleteEvent(identifier: String) async throws {
         try await eventKit.requireCalendarAccess()
         guard let event = eventKit.eventStore.event(withIdentifier: identifier) else {
@@ -213,6 +245,33 @@ final class CalendarSyncManager {
         if let identifier = block.calendarIdentifier,
            let calendar = eventKit.eventStore.calendar(withIdentifier: identifier) {
             return calendar
+        }
+
+        let blockCalendar = try await ensureBlockCalendar()
+        guard let calendar = eventKit.eventStore.calendar(withIdentifier: blockCalendar.id) else {
+            throw SyncError.calendarNotFound
+        }
+        return calendar
+    }
+
+    private func targetCalendar(projectId: UUID?, calendarIdentifier: String?) async throws -> EKCalendar {
+        if let calendarIdentifier,
+           let calendar = eventKit.eventStore.calendar(withIdentifier: calendarIdentifier) {
+            return calendar
+        }
+
+        if let projectId,
+           let project = try context.fetch(FetchDescriptor<Project>()).first(where: { $0.id == projectId }) {
+            if let identifier = project.calendarIdentifier,
+               let calendar = eventKit.eventStore.calendar(withIdentifier: identifier) {
+                return calendar
+            }
+
+            if let area = try context.fetch(FetchDescriptor<ProjectArea>()).first(where: { $0.id == project.areaId }),
+               let identifier = area.calendarIdentifier,
+               let calendar = eventKit.eventStore.calendar(withIdentifier: identifier) {
+                return calendar
+            }
         }
 
         let blockCalendar = try await ensureBlockCalendar()
