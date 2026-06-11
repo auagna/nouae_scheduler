@@ -11,6 +11,7 @@ struct DashboardView: View {
     @Query(sort: \ProjectLog.createdAt, order: .reverse) private var logs: [ProjectLog]
     @Query(sort: \NextAdjustment.createdAt, order: .reverse) private var adjustments: [NextAdjustment]
     @State private var message: String?
+    @State private var showingSettings = false
 
     var body: some View {
         NavigationStack {
@@ -42,6 +43,19 @@ struct DashboardView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Settings")
+                }
+            }
+            .sheet(isPresented: $showingSettings) {
+                SettingsView()
+            }
         }
     }
 
