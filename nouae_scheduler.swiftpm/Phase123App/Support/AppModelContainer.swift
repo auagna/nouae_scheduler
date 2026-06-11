@@ -9,6 +9,7 @@ enum AppModelContainer {
             RawTask.self,
             WorkBlock.self,
             ProjectLog.self,
+            ProjectNote.self,
             ProjectMemoSection.self,
             NextAdjustment.self
         ])
