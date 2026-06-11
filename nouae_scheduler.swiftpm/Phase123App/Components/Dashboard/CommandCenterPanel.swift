@@ -79,7 +79,7 @@ private struct NextActionCard: View {
     }
 
     private var timeText: String {
-        block.startAt.formatted(date: .omitted, time: .shortened) + " - " + block.endAt.formatted(date: .omitted, time: .shortened)
+        "\(block.startAt.formatted(date: .omitted, time: .shortened)) - \(block.endAt.formatted(date: .omitted, time: .shortened))"
     }
 }
 
@@ -126,7 +126,7 @@ private struct TodayBlocksCompactList: View {
     }
 
     private func timeText(for block: WorkBlock) -> String {
-        block.startAt.formatted(date: .omitted, time: .shortened) + " - " + block.endAt.formatted(date: .omitted, time: .shortened)
+        "\(block.startAt.formatted(date: .omitted, time: .shortened)) - \(block.endAt.formatted(date: .omitted, time: .shortened))"
     }
 
     private func tone(for state: WorkBlockState) -> StatusBadge.Tone {
