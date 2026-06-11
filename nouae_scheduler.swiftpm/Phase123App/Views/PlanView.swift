@@ -369,8 +369,8 @@ private struct HourGridMetrics {
     let rowHeight: CGFloat = 78
     let rowSpacing: CGFloat = 8
     let headerHeight: CGFloat = 32
-    let blockHeight: CGFloat = 54
-    let blockVerticalInset: CGFloat = 12
+    var blockHeight: CGFloat { rowHeight }
+    let blockVerticalInset: CGFloat = 0
     let snapMinutes = 10
 
     var gridWidth: CGFloat { columnWidth * 6 }
@@ -473,6 +473,7 @@ private struct HourRowView: View {
     let onCancel: (WorkBlock) -> Void
     let onUnplan: (WorkBlock) -> Void
     let onAction: (WorkBlock, WorkBlockAction) -> Void
+    @State private var activeDragMode: ActiveDragMode = .none
 
     var body: some View {
         HStack(spacing: 0) {
@@ -586,28 +587,44 @@ private struct HourGridWorkBlockSegment: View {
     private var moveGesture: some Gesture {
         DragGesture()
             .onChanged { value in
+                guard activeDragMode == .none || activeDragMode == .body else { return }
+                activeDragMode = .body
                 let minuteDelta = metrics.snappedMinuteDelta(translation: value.translation.width)
                 let hourDelta = metrics.snapHourDelta(from: value.translation.height)
                 onPreview(segment.block, segment.range.moved(minuteDelta: minuteDelta, hourDelta: hourDelta))
             }
             .onEnded { value in
+                guard activeDragMode == .body else {
+                    activeDragMode = .none
+                    return
+                }
                 let minuteDelta = metrics.snappedMinuteDelta(translation: value.translation.width)
                 let hourDelta = metrics.snapHourDelta(from: value.translation.height)
                 onCommit(segment.block, segment.range.moved(minuteDelta: minuteDelta, hourDelta: hourDelta))
+                activeDragMode = .none
             }
     }
 
     private func resizeGesture(edge: ResizeEdge) -> some Gesture {
         DragGesture()
             .onChanged { value in
+                let mode: ActiveDragMode = edge == .left ? .leftResize : .rightResize
+                guard activeDragMode == .none || activeDragMode == mode else { return }
+                activeDragMode = mode
                 let minuteDelta = metrics.snappedMinuteDelta(translation: value.translation.width)
                 let range = edge == .left ? segment.range.resizedStart(minuteDelta: minuteDelta) : segment.range.resizedEnd(minuteDelta: minuteDelta)
                 onPreview(segment.block, range)
             }
             .onEnded { value in
+                let mode: ActiveDragMode = edge == .left ? .leftResize : .rightResize
+                guard activeDragMode == mode else {
+                    activeDragMode = .none
+                    return
+                }
                 let minuteDelta = metrics.snappedMinuteDelta(translation: value.translation.width)
                 let range = edge == .left ? segment.range.resizedStart(minuteDelta: minuteDelta) : segment.range.resizedEnd(minuteDelta: minuteDelta)
                 onCommit(segment.block, range)
+                activeDragMode = .none
             }
     }
 
@@ -620,6 +637,7 @@ private struct HourGridWorkBlockSegment: View {
     }
 
     private enum ResizeEdge { case left, right }
+    private enum ActiveDragMode { case none, body, leftResize, rightResize }
 
     private var projectColor: Color {
         guard let project else { return .blue }
