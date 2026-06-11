@@ -36,6 +36,8 @@ struct CalendarMonthView: View {
 }
 
 private struct CalendarMonthDayCell: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let day: Date
     let isCurrentMonth: Bool
     let isSelected: Bool
@@ -48,7 +50,13 @@ private struct CalendarMonthDayCell: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("\(Calendar.current.component(.day, from: day))")
                     .font(.caption.weight(isSelected ? .bold : .regular))
-                    .foregroundStyle(isCurrentMonth ? Color.primary : Color.secondary)
+                    .foregroundStyle(dayTextColor)
+                    .frame(width: 25, height: 25)
+                    .background(dayMarkerBackground, in: Circle())
+                    .overlay {
+                        Circle()
+                            .stroke(todayRingColor, lineWidth: Calendar.current.isDateInToday(day) && !isSelected ? 1.4 : 0)
+                    }
 
                 ForEach(items.prefix(3)) { item in
                     Button { onSelectEvent(item) } label: {
@@ -74,8 +82,46 @@ private struct CalendarMonthDayCell: View {
             }
             .padding(7)
             .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
-            .background(isSelected ? Color.accentColor.opacity(0.14) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(cellBackground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(separatorColor, lineWidth: 1)
+            }
+            .opacity(isCurrentMonth ? 1 : 0.58)
         }
         .buttonStyle(.plain)
+    }
+
+    private var dayTextColor: Color {
+        if isSelected { return .accentColor }
+        return isCurrentMonth ? .primary : .secondary
+    }
+
+    private var dayMarkerBackground: Color {
+        if isSelected {
+            return Color.accentColor.opacity(colorScheme == .dark ? 0.24 : 0.18)
+        }
+        if Calendar.current.isDateInToday(day) {
+            return Color.accentColor.opacity(colorScheme == .dark ? 0.12 : 0.08)
+        }
+        return .clear
+    }
+
+    private var cellBackground: Color {
+        if isSelected {
+            return Color.accentColor.opacity(colorScheme == .dark ? 0.10 : 0.07)
+        }
+        if colorScheme == .dark {
+            return Color.white.opacity(0.045)
+        }
+        return Color(uiColor: .secondarySystemBackground)
+    }
+
+    private var separatorColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.13) : Color.black.opacity(0.09)
+    }
+
+    private var todayRingColor: Color {
+        Color.accentColor.opacity(colorScheme == .dark ? 0.95 : 0.85)
     }
 }
