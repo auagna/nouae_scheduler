@@ -12,13 +12,23 @@ struct ProjectsNotesView: View {
     @State private var selectedProjectId: UUID?
     @State private var selectedNoteType: ProjectNoteType = .workJournal
     @State private var message: String?
+    @State private var showingPromptExport = false
 
     var body: some View {
         AppScreenContainer(spacing: 16) {
             AppPageHeader(
                 title: "Project Notes",
                 subtitle: "Area와 Project를 오프라인 노트북처럼 넘겨보는 thinking space입니다."
-            )
+            ) {
+                Button {
+                    showingPromptExport = true
+                } label: {
+                    Image(systemName: "doc.on.clipboard")
+                        .frame(width: 34, height: 34)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Vision Board Prompt")
+            }
 
             if let message {
                 Text(message)
@@ -54,6 +64,9 @@ struct ProjectsNotesView: View {
         }
         .onChange(of: selectedProjectId) { _, _ in
             ensureNotesForCurrentProject()
+        }
+        .sheet(isPresented: $showingPromptExport) {
+            PromptExportView(initialType: .projectVisionBoardReview, selectedProjectId: selectedProjectId)
         }
     }
 
