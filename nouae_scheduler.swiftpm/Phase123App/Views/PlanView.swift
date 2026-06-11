@@ -9,11 +9,14 @@ struct PlanView: View {
     @Query(sort: \Project.updatedAt, order: .reverse) private var projects: [Project]
     @Query(sort: \WorkBlock.startAt) private var blocks: [WorkBlock]
 
+    @AppStorage("nouae.sharedSelectedDate") private var sharedSelectedDateTime: Double = Date().timeIntervalSinceReferenceDate
     @State private var captureTitle = ""
     @State private var boardDate = Date()
+    @State private var planViewType: PlanViewType = .day
     @State private var selectedProjectId: UUID?
     @State private var placementTask: RawTask?
     @State private var completedLogBlock: WorkBlock?
+    @State private var unplanCandidate: WorkBlock?
     @State private var message: String?
 
     var body: some View {
@@ -52,9 +55,28 @@ struct PlanView: View {
             .sheet(item: $completedLogBlock) { block in
                 LogEditorSheet(initialProjectId: block.projectId, initialWorkBlockId: block.id)
             }
+            .confirmationDialog("WorkBlock 배치를 취소할까요?", isPresented: unplanConfirmationBinding, titleVisibility: .visible) {
+                Button("Task Inbox로 되돌리기", role: .destructive) {
+                    if let block = unplanCandidate {
+                        Task { await unplan(block: block) }
+                    }
+                }
+                Button("취소", role: .cancel) {
+                    unplanCandidate = nil
+                }
+            } message: {
+                Text("원본 RawTask가 있으면 다시 Inbox에 표시됩니다. Calendar Event는 삭제를 시도합니다.")
+            }
             .task {
+                syncBoardDateFromShared()
                 if services.eventKit.hasReminderFullAccess { await importReminders() }
                 if services.eventKit.hasFullAccess { try? await services.calendarSync.refreshLinkedEvents() }
+            }
+            .onChange(of: boardDate) { _, newValue in
+                sharedSelectedDateTime = Calendar.current.startOfDay(for: newValue).timeIntervalSinceReferenceDate
+            }
+            .onChange(of: sharedSelectedDateTime) { _, _ in
+                syncBoardDateFromShared()
             }
         }
     }
@@ -94,9 +116,11 @@ struct PlanView: View {
 
     private var boardPanel: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 12) {
                 DatePicker("날짜", selection: $boardDate, displayedComponents: .date)
                     .labelsHidden()
+                PlanViewTypePicker(selection: $planViewType)
+                    .frame(maxWidth: 320)
                 Spacer()
                 #if DEBUG
                 Text("HourGridPlanBoard ACTIVE")
@@ -109,22 +133,50 @@ struct PlanView: View {
             }
             .padding()
 
-            WorkBlockExecutionPanel(blocks: dayBlocks, projects: projects, onAction: perform)
+            switch planViewType {
+            case .day:
+                WorkBlockExecutionPanel(blocks: dayBlocks, projects: projects, onAction: perform)
 
-            HourGridPlanBoard(
-                date: boardDate,
-                blocks: dayBlocks,
-                projects: projects,
-                onDropTask: drop,
-                onChangeTime: updateTime,
-                onAction: perform
-            )
+                HourGridPlanBoard(
+                    date: boardDate,
+                    blocks: dayBlocks,
+                    projects: projects,
+                    onDropTask: drop,
+                    onChangeTime: updateTime,
+                    onUnplan: { block in unplanCandidate = block },
+                    onAction: perform
+                )
+            case .week:
+                ScrollView {
+                    PlanWeekView(selectedDate: boardDate, blocks: blocks) { date in
+                        boardDate = date
+                        planViewType = .day
+                    }
+                    .padding()
+                }
+                .background(Color(uiColor: .systemGroupedBackground))
+            case .month:
+                ScrollView {
+                    PlanMonthView(selectedDate: boardDate, blocks: blocks) { date in
+                        boardDate = date
+                        planViewType = .day
+                    }
+                    .padding()
+                }
+                .background(Color(uiColor: .systemGroupedBackground))
+            }
         }
     }
 
     private var inboxTasks: [RawTask] { tasks.filter { stores.rawTaskStore.isVisibleInInbox($0) } }
     private var activeProjects: [Project] { projects.filter { $0.status != .archived } }
     private var dayBlocks: [WorkBlock] { blocks.filter { Calendar.current.isDate($0.startAt, inSameDayAs: boardDate) } }
+    private var unplanConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { unplanCandidate != nil },
+            set: { if !$0 { unplanCandidate = nil } }
+        )
+    }
 
     private func capture() {
         let value = captureTitle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -191,6 +243,28 @@ struct PlanView: View {
             message = error.localizedDescription
         }
     }
+
+    private func unplan(block: WorkBlock) async {
+        let eventIdentifier = block.eventIdentifier
+        do {
+            if let eventIdentifier {
+                try? await services.calendarSync.deleteEvent(identifier: eventIdentifier)
+            }
+            let task = try stores.workBlockStore.unplan(block: block)
+            Task { try? await services.reminderSync.exportRawTask(task) }
+            message = "WorkBlock을 Task Inbox로 되돌렸습니다."
+        } catch {
+            message = error.localizedDescription
+        }
+        unplanCandidate = nil
+    }
+
+    private func syncBoardDateFromShared() {
+        let sharedDate = Date(timeIntervalSinceReferenceDate: sharedSelectedDateTime)
+        if !Calendar.current.isDate(sharedDate, inSameDayAs: boardDate) {
+            boardDate = sharedDate
+        }
+    }
 }
 
 struct PlaceRawTaskSheet: View {
@@ -244,6 +318,7 @@ private struct HourGridPlanBoard: View {
     let projects: [Project]
     let onDropTask: (UUID, Date) -> Void
     let onChangeTime: (WorkBlock, Date, Date) -> Void
+    let onUnplan: (WorkBlock) -> Void
     let onAction: (WorkBlock, WorkBlockAction) -> Void
 
     @State private var previewRanges: [UUID: HourGridRange] = [:]
@@ -270,6 +345,7 @@ private struct HourGridPlanBoard: View {
                             onChangeTime(block, range.startAt, range.endAt)
                         },
                         onCancel: { block in previewRanges[block.id] = nil },
+                        onUnplan: onUnplan,
                         onAction: onAction
                     )
                 }
@@ -350,7 +426,8 @@ private struct HourGridSegment: Identifiable {
         let startMinute = start.minute ?? 0
         let endMinute = end.minute ?? 0
 
-        guard hour >= startHour && hour <= endHour else { return [] }
+        let effectiveEndHour = endMinute == 0 ? endHour - 1 : endHour
+        guard hour >= startHour && hour <= effectiveEndHour else { return [] }
         if startHour == endHour {
             let left = metrics.minuteColumn(for: startMinute)
             let right = max(left + 1, metrics.minuteColumn(for: endMinute))
@@ -394,6 +471,7 @@ private struct HourRowView: View {
     let onPreview: (WorkBlock, HourGridRange) -> Void
     let onCommit: (WorkBlock, HourGridRange) -> Void
     let onCancel: (WorkBlock) -> Void
+    let onUnplan: (WorkBlock) -> Void
     let onAction: (WorkBlock, WorkBlockAction) -> Void
 
     var body: some View {
@@ -413,6 +491,7 @@ private struct HourRowView: View {
                         onPreview: onPreview,
                         onCommit: onCommit,
                         onCancel: onCancel,
+                        onUnplan: onUnplan,
                         onAction: onAction
                     )
                     .frame(
@@ -462,6 +541,7 @@ private struct HourGridWorkBlockSegment: View {
     let onPreview: (WorkBlock, HourGridRange) -> Void
     let onCommit: (WorkBlock, HourGridRange) -> Void
     let onCancel: (WorkBlock) -> Void
+    let onUnplan: (WorkBlock) -> Void
     let onAction: (WorkBlock, WorkBlockAction) -> Void
 
     var body: some View {
@@ -474,7 +554,7 @@ private struct HourGridWorkBlockSegment: View {
                 )
             HStack(spacing: 6) {
                 grip(systemImage: "line.3.horizontal")
-                    .gesture(resizeGesture(edge: .left))
+                    .highPriorityGesture(resizeGesture(edge: .left))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(segment.block.title)
                         .font(.caption.weight(.semibold))
@@ -488,13 +568,14 @@ private struct HourGridWorkBlockSegment: View {
                     Button("Start") { onAction(segment.block, .start) }
                     Button("Complete") { onAction(segment.block, .complete) }
                     Button("Delay") { onAction(segment.block, .delay) }
+                    Button("배치 취소", role: .destructive) { onUnplan(segment.block) }
                     Button("Stop", role: .destructive) { onAction(segment.block, .stop) }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .font(.caption)
                 }
                 grip(systemImage: "line.3.horizontal")
-                    .gesture(resizeGesture(edge: .right))
+                    .highPriorityGesture(resizeGesture(edge: .right))
             }
             .padding(.horizontal, 8)
         }
@@ -531,10 +612,10 @@ private struct HourGridWorkBlockSegment: View {
     }
 
     private func grip(systemImage: String) -> some View {
-        Image(systemName: systemImage)
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .frame(width: 18, height: 36)
+        RoundedRectangle(cornerRadius: 2, style: .continuous)
+            .fill(projectColor.opacity(0.72))
+            .frame(width: 4, height: 30)
+            .frame(width: 24, height: 44)
             .contentShape(Rectangle())
     }
 
