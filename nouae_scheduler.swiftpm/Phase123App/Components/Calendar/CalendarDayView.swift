@@ -5,12 +5,22 @@ struct CalendarDayView: View {
     let items: [CalendarTimelineItem]
     let localBlocks: [WorkBlock]
     let onSelectEvent: (CalendarTimelineItem) -> Void
+    let onAddItem: () -> Void
 
     var body: some View {
         AppPanel(title: "Day", subtitle: "Calendar events and Plan synced blocks") {
             ScrollView {
                 VStack(alignment: .leading, spacing: AppUI.Spacing.card) {
-                    AppSectionHeader(title: "Calendar Events", subtitle: date.formatted(date: .abbreviated, time: .omitted))
+                    HStack(alignment: .center, spacing: 10) {
+                        AppSectionHeader(title: "Calendar Events", subtitle: date.formatted(date: .abbreviated, time: .omitted))
+                        Spacer()
+                        Button(action: onAddItem) {
+                            Image(systemName: "plus")
+                                .frame(width: 30, height: 30)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityLabel("Add Calendar Item")
+                    }
 
                     if items.isEmpty {
                         ContentUnavailableView("일정이 없습니다", systemImage: "calendar", description: Text("선택한 Calendar 필터에 표시할 일정이 없습니다."))
@@ -26,9 +36,10 @@ struct CalendarDayView: View {
 
                     AppSectionHeader(title: "Plan Synced Blocks", subtitle: "nou ae WorkBlock")
                     ForEach(localBlocks) { block in
+                        let timeText = "\(block.startAt.formatted(date: .omitted, time: .shortened)) - \(block.endAt.formatted(date: .omitted, time: .shortened))"
                         AppListRow(
                             title: block.title,
-                            subtitle: block.startAt.formatted(date: .omitted, time: .shortened) + " - " + block.endAt.formatted(date: .omitted, time: .shortened)
+                            subtitle: timeText
                         ) {
                             Image(systemName: "rectangle.fill")
                                 .foregroundStyle(.blue)
@@ -75,7 +86,7 @@ private struct CalendarEventCard: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(item.title)
                         .font(.subheadline.weight(.semibold))
-                    Text(item.startAt.formatted(date: .omitted, time: .shortened) + " - " + item.endAt.formatted(date: .omitted, time: .shortened))
+                    Text("\(item.startAt.formatted(date: .omitted, time: .shortened)) - \(item.endAt.formatted(date: .omitted, time: .shortened))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if item.isLocalOnly {
