@@ -36,6 +36,7 @@ private struct PencilCanvasRepresentable: UIViewRepresentable {
         canvas.isOpaque = false
         canvas.drawingPolicy = .pencilOnly
         canvas.tool = PKInkingTool(.pen, color: .systemBlue, width: 3)
+        context.coordinator.attachToolPicker(to: canvas)
         if let drawing = try? PKDrawing(data: data) {
             canvas.drawing = drawing
             context.coordinator.lastData = data
@@ -53,9 +54,16 @@ private struct PencilCanvasRepresentable: UIViewRepresentable {
     final class Coordinator: NSObject, PKCanvasViewDelegate {
         @Binding var data: Data
         var lastData = Data()
+        private let toolPicker = PKToolPicker()
 
         init(data: Binding<Data>) {
             _data = data
+        }
+
+        func attachToolPicker(to canvas: PKCanvasView) {
+            toolPicker.addObserver(canvas)
+            toolPicker.setVisible(true, forFirstResponder: canvas)
+            canvas.becomeFirstResponder()
         }
 
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
