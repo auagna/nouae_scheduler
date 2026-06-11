@@ -473,7 +473,6 @@ private struct HourRowView: View {
     let onCancel: (WorkBlock) -> Void
     let onUnplan: (WorkBlock) -> Void
     let onAction: (WorkBlock, WorkBlockAction) -> Void
-    @State private var activeDragMode: ActiveDragMode = .none
 
     var body: some View {
         HStack(spacing: 0) {
@@ -544,6 +543,7 @@ private struct HourGridWorkBlockSegment: View {
     let onCancel: (WorkBlock) -> Void
     let onUnplan: (WorkBlock) -> Void
     let onAction: (WorkBlock, WorkBlockAction) -> Void
+    @State private var activeDragMode: ActiveDragMode = .none
 
     var body: some View {
         ZStack {
