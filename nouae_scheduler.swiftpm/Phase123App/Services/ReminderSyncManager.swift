@@ -123,6 +123,35 @@ final class ReminderSyncManager {
         try eventKit.eventStore.save(reminder, commit: true)
     }
 
+    @discardableResult
+    func createReminder(
+        title: String,
+        notes: String,
+        urlString: String,
+        dueAt: Date?,
+        isUrgent: Bool,
+        projectId: UUID?,
+        listIdentifier: String?
+    ) async throws -> String {
+        try await eventKit.requireReminderAccess()
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { throw SyncError.invalidTitle }
+
+        let reminder = EKReminder(eventStore: eventKit.eventStore)
+        reminder.title = trimmedTitle
+        reminder.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notes
+        if let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            reminder.url = url
+        }
+        reminder.priority = isUrgent ? 1 : 0
+        reminder.calendar = try await reminderList(projectId: projectId, listIdentifier: listIdentifier)
+        reminder.dueDateComponents = dueAt.map {
+            Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: $0)
+        }
+        try eventKit.eventStore.save(reminder, commit: true)
+        return reminder.calendarItemIdentifier
+    }
+
     private func fetchIncompleteReminders() async -> [EKReminder] {
         let predicate = eventKit.eventStore.predicateForIncompleteReminders(
             withDueDateStarting: nil,
@@ -150,6 +179,33 @@ final class ReminderSyncManager {
                 project.reminderListIdentifier = identifier
                 project.reminderListTitle = area.reminderListTitle
                 try? context.save()
+                return list
+            }
+        }
+
+        let blockList = try await ensureBlockReminderList()
+        guard let list = eventKit.eventStore.calendar(withIdentifier: blockList.id) else {
+            throw SyncError.reminderCalendarNotFound
+        }
+        return list
+    }
+
+    private func reminderList(projectId: UUID?, listIdentifier: String?) async throws -> EKCalendar {
+        if let listIdentifier,
+           let list = eventKit.eventStore.calendar(withIdentifier: listIdentifier) {
+            return list
+        }
+
+        if let projectId,
+           let project = try context.fetch(FetchDescriptor<Project>()).first(where: { $0.id == projectId }) {
+            if let identifier = project.reminderListIdentifier,
+               let list = eventKit.eventStore.calendar(withIdentifier: identifier) {
+                return list
+            }
+
+            if let area = try context.fetch(FetchDescriptor<ProjectArea>()).first(where: { $0.id == project.areaId }),
+               let identifier = area.reminderListIdentifier,
+               let list = eventKit.eventStore.calendar(withIdentifier: identifier) {
                 return list
             }
         }
