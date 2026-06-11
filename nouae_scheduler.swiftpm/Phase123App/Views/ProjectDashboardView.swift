@@ -241,7 +241,7 @@ private struct ProjectTodayWorkPanel: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(block.title)
                             .font(.subheadline.weight(.semibold))
-                        Text(block.startAt.formatted(date: .omitted, time: .shortened) + " - " + block.endAt.formatted(date: .omitted, time: .shortened))
+                        Text("\(block.startAt.formatted(date: .omitted, time: .shortened)) - \(block.endAt.formatted(date: .omitted, time: .shortened))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
