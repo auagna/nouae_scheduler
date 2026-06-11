@@ -9,6 +9,7 @@ struct ProjectDashboardView: View {
     @Query(sort: \ProjectMemoSection.order) private var sections: [ProjectMemoSection]
     @Query(sort: \ProjectLog.createdAt, order: .reverse) private var logs: [ProjectLog]
     @Query(sort: \NextAdjustment.createdAt, order: .reverse) private var adjustments: [NextAdjustment]
+    @State private var showingPromptExport = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -73,12 +74,23 @@ struct ProjectDashboardView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showingPromptExport = true
+                } label: {
+                    Image(systemName: "doc.on.clipboard")
+                }
+                .accessibilityLabel("Project Analysis Prompt")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu(project.status.title) {
                     ForEach(ProjectStatus.allCases) { status in
                         Button(status.title) { changeStatus(status) }
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showingPromptExport) {
+            PromptExportView(initialType: .projectAnalysis, selectedProjectId: project.id)
         }
     }
 
