@@ -8,8 +8,6 @@ struct CalendarCanvasView: View {
     let onSelectDay: (Date) -> Void
     let onSelectEvent: (CalendarTimelineItem) -> Void
 
-    @State private var zoomScale: CGFloat = 1
-    @State private var panOffset: CGSize = .zero
     @State private var drawingData: Data = Data()
 
     private var drawingKey: String {
@@ -17,32 +15,33 @@ struct CalendarCanvasView: View {
     }
 
     var body: some View {
-        AppPanel(title: "Canvas", subtitle: "Pan, zoom, and annotate the month flow") {
+        AppPanel(title: "Canvas", subtitle: "Scroll and annotate the month flow") {
             ZStack {
-                CalendarCanvasGrid(
-                    selectedDate: selectedDate,
-                    items: items,
-                    zoomScale: zoomScale,
-                    onSelectDay: onSelectDay,
-                    onSelectEvent: onSelectEvent
-                )
-                .scaleEffect(zoomScale)
-                .offset(panOffset)
-                .animation(.easeInOut(duration: 0.18), value: zoomScale)
-                .animation(.easeInOut(duration: 0.18), value: panOffset)
-                .gesture(canvasGesture)
+                ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                    CalendarCanvasGrid(
+                        selectedDate: selectedDate,
+                        items: items,
+                        zoomScale: 1,
+                        onSelectDay: onSelectDay,
+                        onSelectEvent: onSelectEvent
+                    )
+                    .frame(minWidth: 760, minHeight: 560)
+                    .padding(10)
+                }
+                .scrollDisabled(isDrawingMode)
                 .allowsHitTesting(!isDrawingMode)
 
                 if isDrawingMode {
                     CalendarDrawingOverlay(data: $drawingData)
                         .clipShape(RoundedRectangle(cornerRadius: AppUI.Radius.card, style: .continuous))
                         .transition(.opacity)
+                        .allowsHitTesting(true)
                 }
             }
             .frame(minHeight: 560)
             .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: AppUI.Radius.card, style: .continuous))
             .overlay(alignment: .topTrailing) {
-                StatusBadge(zoomLabel, tone: .blue, symbolName: isDrawingMode ? "pencil.tip" : "hand.draw")
+                StatusBadge(modeLabel, tone: .blue, symbolName: isDrawingMode ? "pencil.tip" : "hand.draw")
                     .padding(12)
             }
             .onAppear { loadDrawing() }
@@ -51,20 +50,9 @@ struct CalendarCanvasView: View {
         }
     }
 
-    private var canvasGesture: some Gesture {
-        SimultaneousGesture(
-            MagnificationGesture()
-                .onChanged { value in zoomScale = min(max(value, 0.62), 1.4) },
-            DragGesture()
-                .onChanged { value in panOffset = value.translation }
-        )
-    }
-
-    private var zoomLabel: String {
+    private var modeLabel: String {
         if isDrawingMode { return "Drawing Mode" }
-        if zoomScale >= 1.15 { return "High Zoom" }
-        if zoomScale >= 0.85 { return "Medium Zoom" }
-        return "Low Zoom"
+        return "Scroll Mode"
     }
 
     private func loadDrawing() {
