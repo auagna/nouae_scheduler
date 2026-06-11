@@ -37,7 +37,7 @@ struct OnboardingView: View {
                     .buttonStyle(.bordered)
                 }
 
-                ProgressView(value: Double(step.rawValue + 1), total: Double(OnboardingStep.allCases.count))
+                ProgressView(value: Double(step.rawValue.advanced(by: 1)), total: Double(OnboardingStep.allCases.count))
 
                 AppPanel(title: panelTitle, subtitle: panelSubtitle) {
                     stepContent
@@ -175,7 +175,7 @@ struct OnboardingView: View {
             hasCompletedOnboarding = true
             return
         }
-        if let next = OnboardingStep(rawValue: step.rawValue + 1) {
+        if let next = OnboardingStep(rawValue: step.rawValue.advanced(by: 1)) {
             step = next
         }
     }
@@ -248,9 +248,17 @@ struct OnboardingView: View {
     private func createFirstWorkBlock() async {
         await run {
             let project = selectedProjectId.flatMap { id in projects.first { $0.id == id } } ?? projects.first
-            let task = rawTasks.first { !$0.isConvertedToBlock } ?? (try stores.rawTaskStore.createRawTask(title: rawTaskTitle, projectId: project?.id))
-            let startAt = DateSnapper.date(on: Date(), minuteOfDay: 9 * 60)
-            let endAt = DateSnapper.date(on: Date(), minuteOfDay: 9 * 60 + 40)
+            let task: RawTask
+            if let existingTask = rawTasks.first(where: { !$0.isConvertedToBlock }) {
+                task = existingTask
+            } else {
+                task = try stores.rawTaskStore.createRawTask(title: rawTaskTitle, projectId: project?.id)
+            }
+
+            let startMinute = 540
+            let endMinute = 580
+            let startAt = DateSnapper.date(on: Date(), minuteOfDay: startMinute)
+            let endAt = DateSnapper.date(on: Date(), minuteOfDay: endMinute)
             let block = try stores.workBlockStore.convert(task: task, project: project, startAt: startAt, endAt: endAt)
             services.calendarSync.scheduleSync(block: block)
             hasCreatedFirstWorkBlock = true
