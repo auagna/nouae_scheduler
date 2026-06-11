@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
     <key>NSCalendarsFullAccessUsageDescription</key>
-    <string>오늘 일정을 표시하고 새 일정을 Apple Calendar에 저장하기 위해 캘린더 접근 권한이 필요합니다.</string>
+    <string>nou ae는 Area와 BLOCK Calendar를 만들고 WorkBlock을 Apple Calendar와 동기화하기 위해 캘린더 접근 권한이 필요합니다.</string>
     <key>NSCalendarsUsageDescription</key>
-    <string>오늘 일정을 표시하고 새 일정을 Apple Calendar에 저장하기 위해 캘린더 접근 권한이 필요합니다.</string>
+    <string>nou ae는 Area와 BLOCK Calendar를 만들고 WorkBlock을 Apple Calendar와 동기화하기 위해 캘린더 접근 권한이 필요합니다.</string>
     <key>NSRemindersFullAccessUsageDescription</key>
-    <string>오늘 할 일을 표시하고 새 할 일을 Apple Reminders에 저장하기 위해 미리알림 접근 권한이 필요합니다.</string>
+    <string>nou ae는 Area와 BLOCK Reminder List를 만들고 RawTask Inbox를 Apple Reminders와 동기화하기 위해 미리알림 접근 권한이 필요합니다.</string>
     <key>NSRemindersUsageDescription</key>
-    <string>오늘 할 일을 표시하고 새 할 일을 Apple Reminders에 저장하기 위해 미리알림 접근 권한이 필요합니다.</string>
+    <string>nou ae는 Area와 BLOCK Reminder List를 만들고 RawTask Inbox를 Apple Reminders와 동기화하기 위해 미리알림 접근 권한이 필요합니다.</string>
 </dict>
 </plist>
