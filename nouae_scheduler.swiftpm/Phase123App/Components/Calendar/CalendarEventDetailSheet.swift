@@ -17,7 +17,7 @@ struct CalendarEventDetailSheet: View {
                 Section("Event") {
                     Text(item.title)
                         .font(.headline)
-                    Text(item.startAt.formatted(date: .abbreviated, time: .shortened) + " - " + item.endAt.formatted(date: .abbreviated, time: .shortened))
+                    Text("\(item.startAt.formatted(date: .abbreviated, time: .shortened)) - \(item.endAt.formatted(date: .abbreviated, time: .shortened))")
                     HStack {
                         Circle()
                             .fill(Color(calendarHex: item.colorHex))
