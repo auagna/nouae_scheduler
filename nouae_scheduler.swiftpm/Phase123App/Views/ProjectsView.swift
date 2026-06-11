@@ -1,6 +1,13 @@
 import SwiftData
 import SwiftUI
 
+private enum ProjectsViewMode: String, CaseIterable, Identifiable {
+    case list = "List"
+    case notes = "Notes"
+
+    var id: String { rawValue }
+}
+
 struct ProjectsView: View {
     @EnvironmentObject private var stores: AppStores
     @EnvironmentObject private var services: AppServices
@@ -10,65 +17,23 @@ struct ProjectsView: View {
     @Query(sort: \ProjectLog.createdAt, order: .reverse) private var logs: [ProjectLog]
     @State private var showingAdd = false
     @State private var message: String?
+    @State private var viewMode: ProjectsViewMode = .list
 
     var body: some View {
         NavigationStack {
-            List {
-                if let message {
-                    Section {
-                        Text(message)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+            VStack(spacing: 0) {
+                Picker("Projects View", selection: $viewMode) {
+                    ForEach(ProjectsViewMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
                     }
                 }
+                .pickerStyle(.segmented)
+                .padding([.horizontal, .top])
 
-                Section("Areas") {
-                    if areas.isEmpty {
-                        Text("Area가 없습니다. 새 Project 생성 화면에서 Area를 먼저 만들 수 있습니다.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(areas) { area in
-                        HStack {
-                            Circle()
-                                .fill(Color(calendarHex: area.calendarColorHex))
-                                .frame(width: 8, height: 8)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(area.title)
-                                Text(area.calendarTitle ?? "Calendar 미연결")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Text(area.syncState.title)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                ForEach(ProjectStatus.allCases) { status in
-                    let items = projects.filter { $0.status == status }
-                    if !items.isEmpty {
-                        Section(status.title) {
-                            ForEach(items) { project in
-                                NavigationLink {
-                                    ProjectDashboardView(project: project)
-                                } label: {
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        ProjectCard(
-                                            project: project,
-                                            blocks: blocks.filter { $0.projectId == project.id },
-                                            logs: logs.filter { $0.projectId == project.id }
-                                        )
-                                        Text(areaTitle(for: project))
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                        }
-                    }
+                if viewMode == .list {
+                    projectList
+                } else {
+                    ProjectsNotesView(areas: areas, projects: projects)
                 }
             }
             .navigationTitle("Projects")
@@ -83,6 +48,67 @@ struct ProjectsView: View {
             .sheet(isPresented: $showingAdd) { AddProjectView() }
             .task {
                 if services.eventKit.hasFullAccess { refresh() }
+            }
+        }
+    }
+
+    private var projectList: some View {
+        List {
+            if let message {
+                Section {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Areas") {
+                if areas.isEmpty {
+                    Text("Area가 없습니다. 새 Project 생성 화면에서 Area를 먼저 만들 수 있습니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(areas) { area in
+                    HStack {
+                        Circle()
+                            .fill(Color(calendarHex: area.calendarColorHex))
+                            .frame(width: 8, height: 8)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(area.title)
+                            Text(area.calendarTitle ?? "Calendar 미연결")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(area.syncState.title)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            ForEach(ProjectStatus.allCases) { status in
+                let items = projects.filter { $0.status == status }
+                if !items.isEmpty {
+                    Section(status.title) {
+                        ForEach(items) { project in
+                            NavigationLink {
+                                ProjectDashboardView(project: project)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ProjectCard(
+                                        project: project,
+                                        blocks: blocks.filter { $0.projectId == project.id },
+                                        logs: logs.filter { $0.projectId == project.id }
+                                    )
+                                    Text(areaTitle(for: project))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -198,7 +224,8 @@ struct AddProjectView: View {
         defer { isCreating = false }
         do {
             let area = selectedAreaId.flatMap { id in areas.first { $0.id == id } }
-            _ = try stores.projectStore.createProjectInArea(title: title, type: type, status: status, goal: goal, area: area)
+            let project = try stores.projectStore.createProjectInArea(title: title, type: type, status: status, goal: goal, area: area)
+            try stores.projectNoteStore.ensureDefaultNotes(areaId: area?.id, projectId: project.id, projectTitle: project.title)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
