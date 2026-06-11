@@ -1,3 +1,4 @@
+import PencilKit
 import SwiftUI
 
 struct CalendarDrawingOverlay: View {
@@ -5,22 +6,62 @@ struct CalendarDrawingOverlay: View {
 
     var body: some View {
         ZStack {
-            Color.clear
-                .contentShape(Rectangle())
+            PencilCanvasRepresentable(data: $data)
 
-            VStack(spacing: 8) {
-                Image(systemName: "pencil.tip")
-                    .font(.title2)
-                    .foregroundStyle(.blue)
-                Text("Drawing Mode")
-                    .font(.headline)
-                Text("Apple Pencil canvas is disabled in this stability build.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+            VStack {
+                HStack {
+                    Spacer()
+                    StatusBadge("Pencil Drawing", tone: .blue, symbolName: "pencil.tip")
+                        .padding(12)
+                }
+                Spacer()
             }
-            .padding()
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .background(Color.clear)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct PencilCanvasRepresentable: UIViewRepresentable {
+    @Binding var data: Data
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(data: $data)
+    }
+
+    func makeUIView(context: Context) -> PKCanvasView {
+        let canvas = PKCanvasView()
+        canvas.delegate = context.coordinator
+        canvas.backgroundColor = .clear
+        canvas.isOpaque = false
+        canvas.drawingPolicy = .pencilOnly
+        canvas.tool = PKInkingTool(.pen, color: .systemBlue, width: 3)
+        if let drawing = try? PKDrawing(data: data) {
+            canvas.drawing = drawing
+            context.coordinator.lastData = data
+        }
+        return canvas
+    }
+
+    func updateUIView(_ canvas: PKCanvasView, context: Context) {
+        guard data != context.coordinator.lastData,
+              let drawing = try? PKDrawing(data: data) else { return }
+        canvas.drawing = drawing
+        context.coordinator.lastData = data
+    }
+
+    final class Coordinator: NSObject, PKCanvasViewDelegate {
+        @Binding var data: Data
+        var lastData = Data()
+
+        init(data: Binding<Data>) {
+            _data = data
+        }
+
+        func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+            let newData = canvasView.drawing.dataRepresentation()
+            lastData = newData
+            data = newData
         }
     }
 }
