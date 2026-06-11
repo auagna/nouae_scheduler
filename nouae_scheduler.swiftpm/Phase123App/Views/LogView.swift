@@ -20,17 +20,27 @@ struct LogView: View {
     @State private var content = ""
     @State private var projectFilterId: UUID?
     @State private var message: String?
+    @State private var showingPromptExport = false
 
     var body: some View {
         NavigationStack {
             AppScreenContainer(spacing: 18) {
                 AppPageHeader(title: "Log", subtitle: "1분 안에 남기는 reflection data입니다.") {
-                    Button { showingEditor = true } label: {
-                        Image(systemName: "plus")
-                            .frame(width: 34, height: 34)
+                    HStack(spacing: 8) {
+                        Button { showingPromptExport = true } label: {
+                            Image(systemName: "doc.on.clipboard")
+                                .frame(width: 34, height: 34)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityLabel("Log Pattern Prompt")
+
+                        Button { showingEditor = true } label: {
+                            Image(systemName: "plus")
+                                .frame(width: 34, height: 34)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityLabel("Log 작성")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityLabel("Log 작성")
                 }
 
                 quickLogPanel
@@ -40,6 +50,9 @@ struct LogView: View {
                 timelinePanel
             }
             .sheet(isPresented: $showingEditor) { LogEditorSheet() }
+            .sheet(isPresented: $showingPromptExport) {
+                PromptExportView(initialType: .logPatternReview, selectedProjectId: projectFilterId)
+            }
             .navigationBarTitleDisplayMode(.inline)
         }
     }
