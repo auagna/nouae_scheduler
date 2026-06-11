@@ -12,6 +12,7 @@ struct DashboardView: View {
     @Query(sort: \NextAdjustment.createdAt, order: .reverse) private var adjustments: [NextAdjustment]
     @State private var message: String?
     @State private var showingSettings = false
+    @State private var showingPromptExport = false
 
     var body: some View {
         NavigationStack {
@@ -46,6 +47,14 @@ struct DashboardView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        showingPromptExport = true
+                    } label: {
+                        Image(systemName: "doc.on.clipboard")
+                    }
+                    .accessibilityLabel("Prompt Export")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         showingSettings = true
                     } label: {
                         Image(systemName: "gearshape")
@@ -55,6 +64,9 @@ struct DashboardView: View {
             }
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
+            }
+            .sheet(isPresented: $showingPromptExport) {
+                PromptExportView(initialType: .weeklyReview)
             }
         }
     }
