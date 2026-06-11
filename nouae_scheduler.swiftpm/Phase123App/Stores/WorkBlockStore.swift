@@ -4,7 +4,10 @@ import SwiftData
 @MainActor
 final class WorkBlockStore {
     private let context: ModelContext
-    init(context: ModelContext) { self.context = context }
+
+    init(context: ModelContext) {
+        self.context = context
+    }
 
     func createWorkBlock(title: String, projectId: UUID?, startAt: Date, endAt: Date) throws -> WorkBlock {
         let range = DateSnapper.normalizedRange(startAt: startAt, endAt: endAt)
@@ -40,8 +43,26 @@ final class WorkBlockStore {
         block.startAt = range.startAt
         block.endAt = range.endAt
         block.updatedAt = Date()
-        block.syncState = block.calendarIdentifier == nil ? .local : .pending
+        block.syncState = .pending
         try context.save()
+    }
+
+    func unplan(block: WorkBlock) throws -> RawTask {
+        let task: RawTask
+        if let rawTaskId = block.rawTaskId,
+           let existing = try context.fetch(FetchDescriptor<RawTask>()).first(where: { $0.id == rawTaskId }) {
+            task = existing
+            task.isConvertedToBlock = false
+            task.scheduledAt = nil
+            task.projectId = block.projectId ?? task.projectId
+            task.syncState = .pending
+        } else {
+            task = RawTask(title: block.title, projectId: block.projectId, syncState: .local)
+            context.insert(task)
+        }
+        context.delete(block)
+        try context.save()
+        return task
     }
 
     func start(block: WorkBlock) throws {
