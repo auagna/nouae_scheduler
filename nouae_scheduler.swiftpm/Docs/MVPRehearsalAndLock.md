@@ -2,6 +2,8 @@
 
 This document is the MVP lock gate. After this point, avoid new features unless they directly fix crashes, data loss, duplicated sync, or unusable primary flows.
 
+Core loop: Observe -> Act -> Reflect -> Synthesize -> Become.
+
 ## Daily Rehearsal
 
 ### Morning
