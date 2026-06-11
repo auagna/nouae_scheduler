@@ -114,7 +114,9 @@ struct PromptBuilderService {
             let projectCount = projects.filter { $0.areaId == area.id }.count
             return "- \(area.title): \(projectCount) projects, calendar=\(area.calendarTitle ?? "missing"), reminders=\(area.reminderListTitle ?? "missing"), sync=\(area.syncState.title)"
         }
-        return "## Areas\n" + lines.joined(separator: "\n")
+        var section = ["## Areas"]
+        section.append(contentsOf: lines)
+        return section.joined(separator: "\n")
     }
 
     private func projectSection(projects: [Project], areas: [ProjectArea]) -> String {
@@ -131,7 +133,9 @@ struct PromptBuilderService {
               reminder list: \(project.reminderListTitle ?? "area/default")
             """
         }
-        return "## Projects\n" + lines.joined(separator: "\n")
+        var section = ["## Projects"]
+        section.append(contentsOf: lines)
+        return section.joined(separator: "\n")
     }
 
     private func taskSection(tasks: [RawTask]) -> String {
@@ -139,7 +143,9 @@ struct PromptBuilderService {
         let lines = tasks.prefix(20).map { task in
             "- \(task.title) | converted=\(task.isConvertedToBlock) | reminder=\(task.reminderIdentifier == nil ? "missing" : "linked") | created=\(shortDate(task.createdAt))"
         }
-        return "## RawTasks\n" + lines.joined(separator: "\n")
+        var section = ["## RawTasks"]
+        section.append(contentsOf: lines)
+        return section.joined(separator: "\n")
     }
 
     private func workBlockSection(blocks: [WorkBlock]) -> String {
@@ -147,7 +153,9 @@ struct PromptBuilderService {
         let lines = blocks.prefix(30).map { block in
             "- \(block.title) | \(shortDateTime(block.startAt)) -> \(shortDateTime(block.endAt)) | state=\(block.executionState.title) | sync=\(block.syncState.title)"
         }
-        return "## WorkBlocks\n" + lines.joined(separator: "\n")
+        var section = ["## WorkBlocks"]
+        section.append(contentsOf: lines)
+        return section.joined(separator: "\n")
     }
 
     private func noteSection(notes: [ProjectNote]) -> String {
@@ -156,7 +164,9 @@ struct PromptBuilderService {
             let preview = note.content.replacingOccurrences(of: "\n", with: " ").prefix(180)
             return "- \(note.noteType.title) / \(note.title): \(preview)"
         }
-        return "## Project Notes\n" + lines.joined(separator: "\n")
+        var section = ["## Project Notes"]
+        section.append(contentsOf: lines)
+        return section.joined(separator: "\n")
     }
 
     private func logSection(logs: [ProjectLog]) -> String {
@@ -166,7 +176,9 @@ struct PromptBuilderService {
             let blockers = log.blockerTags.isEmpty ? "-" : log.blockerTags.joined(separator: ", ")
             return "- \(shortDate(log.createdAt)) \(log.logType.title) | focus=\(log.focusLevel.map { String($0) } ?? "-") | mood=\(mood) | blockers=\(blockers) | next=\(log.nextAdjustment)"
         }
-        return "## Logs\n" + lines.joined(separator: "\n")
+        var section = ["## Logs"]
+        section.append(contentsOf: lines)
+        return section.joined(separator: "\n")
     }
 
     private func adjustmentSection(adjustments: [NextAdjustment]) -> String {
@@ -174,7 +186,9 @@ struct PromptBuilderService {
         let lines = adjustments.prefix(12).map { adjustment in
             "- \(adjustment.content) | active=\(adjustment.isActive) | created=\(shortDate(adjustment.createdAt))"
         }
-        return "## Next Adjustments\n" + lines.joined(separator: "\n")
+        var section = ["## Next Adjustments"]
+        section.append(contentsOf: lines)
+        return section.joined(separator: "\n")
     }
 
     private func trackerSummary(blocks: [WorkBlock], logs: [ProjectLog]) -> String {
@@ -223,7 +237,11 @@ struct PromptBuilderService {
         case .planRhythmReview:
             specific = ["Which block length works best?", "Where does the plan overestimate available energy?"]
         }
-        return "## Questions To Answer\n" + (specific + shared).map { "- \($0)" }.joined(separator: "\n")
+        var questions = specific
+        questions.append(contentsOf: shared)
+        var section = ["## Questions To Answer"]
+        section.append(contentsOf: questions.map { "- \($0)" })
+        return section.joined(separator: "\n")
     }
 
     private func average(_ values: [Int]) -> String {
