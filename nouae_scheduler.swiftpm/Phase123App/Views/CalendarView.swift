@@ -19,6 +19,7 @@ struct CalendarView: View {
     @Query(sort: \Project.updatedAt, order: .reverse) private var projects: [Project]
     @Query(sort: \WorkBlock.startAt) private var blocks: [WorkBlock]
 
+    @AppStorage("nouae.sharedSelectedDate") private var sharedSelectedDateTime: Double = Date().timeIntervalSinceReferenceDate
     @State private var viewType: CalendarViewType = .month
     @State private var selectedDate = Date()
     @State private var calendars: [CalendarSource] = []
@@ -88,7 +89,17 @@ struct CalendarView: View {
                     Task { await update(item: item, title: title, startAt: startAt, endAt: endAt) }
                 }
             }
-            .task { await loadAll() }
+            .task {
+                syncSelectedDateFromShared()
+                await loadAll()
+            }
+            .onChange(of: selectedDate) { _, newValue in
+                sharedSelectedDateTime = Calendar.current.startOfDay(for: newValue).timeIntervalSinceReferenceDate
+            }
+            .onChange(of: sharedSelectedDateTime) { _, _ in
+                syncSelectedDateFromShared()
+                Task { await loadItems() }
+            }
         }
     }
 
@@ -266,6 +277,13 @@ struct CalendarView: View {
     private func goToday() {
         selectedDate = Date()
         Task { await loadItems() }
+    }
+
+    private func syncSelectedDateFromShared() {
+        let sharedDate = Date(timeIntervalSinceReferenceDate: sharedSelectedDateTime)
+        if !Calendar.current.isDate(sharedDate, inSameDayAs: selectedDate) {
+            selectedDate = sharedDate
+        }
     }
 
     private func update(item: CalendarTimelineItem, title: String, startAt: Date, endAt: Date) async {
