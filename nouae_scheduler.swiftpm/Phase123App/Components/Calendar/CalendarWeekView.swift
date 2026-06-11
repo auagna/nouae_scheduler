@@ -46,11 +46,44 @@ private struct CalendarWeekColumn: View {
 
                 ForEach(items.prefix(10)) { item in
                     Button { onSelectEvent(item) } label: {
-                        CalendarEventCompactRow(item: item)
+                        CalendarWeekEventChip(item: item)
                     }
                     .buttonStyle(.plain)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+    }
+}
+
+private struct CalendarWeekEventChip: View {
+    let item: CalendarTimelineItem
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 7) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(Color(calendarHex: item.colorHex))
+                .frame(width: 4)
+                .frame(maxHeight: 42)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                Text(item.startAt.formatted(date: .omitted, time: .shortened) + " - " + item.endAt.formatted(date: .omitted, time: .shortened))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, minHeight: 28, maxHeight: 64, alignment: .leading)
+        .background(Color(calendarHex: item.colorHex).opacity(0.12), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .stroke(Color(calendarHex: item.colorHex).opacity(0.22), lineWidth: 1)
         }
     }
 }
