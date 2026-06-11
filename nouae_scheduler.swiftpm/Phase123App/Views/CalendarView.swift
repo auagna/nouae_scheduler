@@ -23,9 +23,11 @@ struct CalendarView: View {
     @State private var viewType: CalendarViewType = .month
     @State private var selectedDate = Date()
     @State private var calendars: [CalendarSource] = []
+    @State private var reminderLists: [ReminderListSource] = []
     @State private var selectedCalendarIds: Set<String> = []
     @State private var items: [CalendarTimelineItem] = []
     @State private var showingFilter = false
+    @State private var showingComposer = false
     @State private var isDrawingMode = false
     @State private var selectedItem: CalendarTimelineItem?
     @State private var editingItem: CalendarTimelineItem?
@@ -65,6 +67,16 @@ struct CalendarView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showingFilter) { filterSheet }
+            .sheet(isPresented: $showingComposer) {
+                CalendarItemComposerSheet(
+                    selectedDate: selectedDate,
+                    calendars: calendars,
+                    reminderLists: reminderLists,
+                    projects: projects,
+                    onCreateEvent: { draft in await createEvent(draft) },
+                    onCreateReminder: { draft in await createReminder(draft) }
+                )
+            }
             .sheet(item: $selectedItem) { item in
                 CalendarEventDetailSheet(
                     item: item,
@@ -169,7 +181,8 @@ struct CalendarView: View {
                 date: selectedDate,
                 items: itemsForDay(selectedDate),
                 localBlocks: blocks.filter { Calendar.current.isDate($0.startAt, inSameDayAs: selectedDate) },
-                onSelectEvent: { selectedItem = $0 }
+                onSelectEvent: { selectedItem = $0 },
+                onAddItem: { showingComposer = true }
             )
         }
     }
@@ -226,6 +239,11 @@ struct CalendarView: View {
         defer { isLoading = false }
         do {
             calendars = try await services.calendarSync.fetchCalendars()
+            if let lists = try? await services.reminderSync.fetchReminderLists() {
+                reminderLists = lists
+            } else {
+                reminderLists = []
+            }
             restoreSelectionIfNeeded()
             try await stores.projectStore.archiveProjectsWithMissingCalendars(calendarSyncManager: services.calendarSync)
             await loadItems()
@@ -256,7 +274,9 @@ struct CalendarView: View {
                     return !externalIds.contains(eventIdentifier)
                 }
                 .map { block in CalendarTimelineItem.local(block: block, project: projects.first { $0.id == block.projectId }) }
-            items = (external + localItems).sorted { $0.startAt < $1.startAt }
+            var mergedItems = external
+            mergedItems.append(contentsOf: localItems)
+            items = mergedItems.sorted { $0.startAt < $1.startAt }
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
@@ -301,6 +321,52 @@ struct CalendarView: View {
         do {
             try await services.calendarSync.deleteEvent(identifier: identifier)
             await loadItems()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func createEvent(_ draft: EventEditorDraft) async {
+        do {
+            _ = try await services.calendarSync.createEvent(
+                title: draft.title,
+                location: draft.location,
+                isAllDay: draft.isAllDay,
+                startAt: draft.startAt,
+                endAt: draft.endAt,
+                calendarIdentifier: draft.calendarIdentifier,
+                projectId: draft.projectId,
+                urlString: draft.urlString,
+                notes: draft.notes
+            )
+            await loadAll()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func createReminder(_ draft: ReminderEditorDraft) async {
+        do {
+            var noteParts: [String] = []
+            let trimmedNotes = draft.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedDetails = draft.details.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedNotes.isEmpty {
+                noteParts.append(trimmedNotes)
+            }
+            if !trimmedDetails.isEmpty {
+                noteParts.append(trimmedDetails)
+            }
+            let dueAt = draft.hasDate ? draft.dueAt : nil
+            _ = try await services.reminderSync.createReminder(
+                title: draft.title,
+                notes: noteParts.joined(separator: "\n"),
+                urlString: draft.urlString,
+                dueAt: dueAt,
+                isUrgent: draft.isUrgent,
+                projectId: draft.projectId,
+                listIdentifier: draft.listIdentifier
+            )
+            await loadAll()
         } catch {
             errorMessage = error.localizedDescription
         }
