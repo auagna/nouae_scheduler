@@ -70,7 +70,7 @@ private struct CalendarWeekEventChip: View {
                 Text(item.title)
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
-                Text(item.startAt.formatted(date: .omitted, time: .shortened) + " - " + item.endAt.formatted(date: .omitted, time: .shortened))
+                Text("\(item.startAt.formatted(date: .omitted, time: .shortened)) - \(item.endAt.formatted(date: .omitted, time: .shortened))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
