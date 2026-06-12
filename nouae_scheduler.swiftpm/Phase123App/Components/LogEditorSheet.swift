@@ -2,9 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct LogEditorSheet: View {
-    private let moodOptions = ["집중", "피로", "불안", "평온", "회복", "창작욕", "과부하", "무기력", "긴장", "만족"]
-    private let blockerOptions = ["시간부족", "집중저하", "외부방해", "계획과다", "컨디션저하", "정보부족", "우선순위혼란", "환경문제"]
-
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var stores: AppStores
     @Query(sort: \Project.updatedAt, order: .reverse) private var projects: [Project]
@@ -62,14 +59,22 @@ struct LogEditorSheet: View {
                 }
 
                 Section("Mood Quick Check") {
-                    ForEach(moodOptions, id: \.self) { option in
-                        Toggle(option, isOn: binding(for: option, in: $moodTags))
+                    ForEach(LogTaxonomy.moodGroups) { group in
+                        DisclosureGroup(group.title) {
+                            ForEach(group.tags, id: \.self) { option in
+                                Toggle(option, isOn: binding(for: option, in: $moodTags))
+                            }
+                        }
                     }
                 }
 
                 Section("막힌 원인") {
-                    ForEach(blockerOptions, id: \.self) { option in
-                        Toggle(option, isOn: binding(for: option, in: $blockerTags))
+                    ForEach(LogTaxonomy.blockerGroups) { group in
+                        DisclosureGroup(group.title) {
+                            ForEach(group.tags, id: \.self) { option in
+                                Toggle(option, isOn: binding(for: option, in: $blockerTags))
+                            }
+                        }
                     }
                     TextField("메모", text: $blockerNote, axis: .vertical)
                 }
