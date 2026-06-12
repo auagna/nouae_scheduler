@@ -9,6 +9,7 @@ enum OnboardingStep: Int, CaseIterable, Identifiable {
     case firstProject
     case firstRawTask
     case firstWorkBlock
+    case firstLog
 
     var id: Int { rawValue }
 
@@ -22,6 +23,7 @@ enum OnboardingStep: Int, CaseIterable, Identifiable {
         case .firstProject: return "First Project"
         case .firstRawTask: return "First RawTask"
         case .firstWorkBlock: return "First WorkBlock"
+        case .firstLog: return "First Log"
         }
     }
 
@@ -43,6 +45,8 @@ enum OnboardingStep: Int, CaseIterable, Identifiable {
             return "RawTask는 빠르게 붙잡은 생각이나 할 일입니다."
         case .firstWorkBlock:
             return "WorkBlock은 시간 위에 배치된 실행 블록입니다."
+        case .firstLog:
+            return "Log는 짧은 회고와 다음 조정을 남기는 reflection data입니다."
         }
     }
 }
