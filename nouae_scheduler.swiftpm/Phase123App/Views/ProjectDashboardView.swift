@@ -9,6 +9,7 @@ struct ProjectDashboardView: View {
     @Query(sort: \ProjectMemoSection.order) private var sections: [ProjectMemoSection]
     @Query(sort: \ProjectLog.createdAt, order: .reverse) private var logs: [ProjectLog]
     @Query(sort: \NextAdjustment.createdAt, order: .reverse) private var adjustments: [NextAdjustment]
+    @Query(sort: \ProjectBoardItem.updatedAt, order: .reverse) private var boardItems: [ProjectBoardItem]
     @State private var showingPromptExport = false
 
     var body: some View {
@@ -36,6 +37,7 @@ struct ProjectDashboardView: View {
                                     projectColor: projectColor
                                 )
                                 ProjectThinkingSpacePanel(sections: projectSections)
+                                ProjectPagePreviewPanel(project: project, items: projectBoardItems)
                                 ProjectTrackerPanel(blocks: projectBlocks, logs: projectLogs, projectColor: projectColor)
                             }
                             .frame(width: geometry.size.width * 0.38)
@@ -60,6 +62,7 @@ struct ProjectDashboardView: View {
                             ProjectInboxPanel(tasks: projectTasks)
                             ProjectNextAdjustmentPanel(adjustments: projectAdjustments)
                             ProjectThinkingSpacePanel(sections: projectSections)
+                            ProjectPagePreviewPanel(project: project, items: projectBoardItems)
                             ProjectTrackerPanel(blocks: projectBlocks, logs: projectLogs, projectColor: projectColor)
                             ProjectRecentLogsPanel(logs: projectLogs)
                             ProjectIntelligencePanel(insights: projectInsights)
@@ -73,6 +76,14 @@ struct ProjectDashboardView: View {
         .navigationTitle(project.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    ProjectPageView(project: project)
+                } label: {
+                    Image(systemName: "square.grid.2x2")
+                }
+                .accessibilityLabel("Open Project Page")
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showingPromptExport = true
@@ -116,6 +127,10 @@ struct ProjectDashboardView: View {
 
     private var projectAdjustments: [NextAdjustment] {
         adjustments.filter { $0.projectId == project.id && $0.isActive }
+    }
+
+    private var projectBoardItems: [ProjectBoardItem] {
+        boardItems.filter { $0.projectId == project.id && !$0.isArchived }
     }
 
     private var progress: Double {
@@ -345,6 +360,58 @@ private struct ProjectRecentLogsPanel: View {
                         .foregroundStyle(.secondary)
                 }
             }
+        }
+        .projectCard()
+    }
+}
+
+private struct ProjectPagePreviewPanel: View {
+    let project: Project
+    let items: [ProjectBoardItem]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                PanelTitle("Project Page", subtitle: "moodboard / vision board")
+                Spacer()
+                NavigationLink {
+                    ProjectPageView(project: project)
+                } label: {
+                    Label("Open", systemImage: "square.grid.2x2")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+            }
+
+            if items.isEmpty {
+                EmptyPanelText("아직 reference나 sketch가 없습니다.")
+            } else {
+                ForEach(items.prefix(3)) { item in
+                    HStack(spacing: 8) {
+                        Image(systemName: item.itemType.symbolName)
+                            .foregroundStyle(Color(calendarHex: item.colorHex))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title)
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+                            Text(item.itemType.title)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(9)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            }
+
+            HStack {
+                Text("References \(items.filter { $0.itemType == .reference || $0.itemType == .link || $0.itemType == .image }.count)")
+                Spacer()
+                Text("Sketches \(items.filter { $0.itemType == .sketch }.count)")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         .projectCard()
     }
