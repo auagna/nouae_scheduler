@@ -2,9 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct LogView: View {
-    private let moodOptions = ["집중", "피로", "불안", "평온", "회복", "창작욕", "과부하", "무기력", "긴장", "만족"]
-    private let blockerOptions = ["시간부족", "집중저하", "외부방해", "계획과다", "컨디션저하", "정보부족", "우선순위혼란", "환경문제"]
-
     @EnvironmentObject private var stores: AppStores
     @Query(sort: \ProjectLog.createdAt, order: .reverse) private var logs: [ProjectLog]
     @Query(sort: \Project.updatedAt, order: .reverse) private var projects: [Project]
@@ -81,8 +78,8 @@ struct LogView: View {
                 }
                 .pickerStyle(.segmented)
 
-                tagSection(title: "Mood Quick Check", options: moodOptions, selection: $moodTags)
-                tagSection(title: "Blocker", options: blockerOptions, selection: $blockerTags)
+                groupedTagSection(title: "Mood Quick Check", groups: LogTaxonomy.moodGroups, selection: $moodTags)
+                groupedTagSection(title: "Blocker Quick Check", groups: LogTaxonomy.blockerGroups, selection: $blockerTags)
 
                 TextField("다음 조정", text: $nextAdjustment, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
@@ -164,29 +161,37 @@ struct LogView: View {
         }
     }
 
-    private func tagSection(title: String, options: [String], selection: Binding<Set<String>>) -> some View {
+    private func groupedTagSection(title: String, groups: [LogTagGroup], selection: Binding<Set<String>>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            FlowLayout(alignment: .leading, spacing: 8) {
-                ForEach(options, id: \.self) { option in
-                    Button {
-                        var values = selection.wrappedValue
-                        if values.contains(option) {
-                            values.remove(option)
-                        } else {
-                            values.insert(option)
+
+            ForEach(groups) { group in
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(group.title)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    FlowLayout(alignment: .leading, spacing: 8) {
+                        ForEach(group.tags, id: \.self) { option in
+                            Button {
+                                var values = selection.wrappedValue
+                                if values.contains(option) {
+                                    values.remove(option)
+                                } else {
+                                    values.insert(option)
+                                }
+                                selection.wrappedValue = values
+                            } label: {
+                                Text(option)
+                                    .font(.caption.weight(.medium))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(selection.wrappedValue.contains(option) ? Color.accentColor.opacity(0.16) : Color(uiColor: .tertiarySystemGroupedBackground), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
                         }
-                        selection.wrappedValue = values
-                    } label: {
-                        Text(option)
-                            .font(.caption.weight(.medium))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(selection.wrappedValue.contains(option) ? Color.accentColor.opacity(0.16) : Color(uiColor: .tertiarySystemGroupedBackground), in: Capsule())
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
