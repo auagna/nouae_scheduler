@@ -10,6 +10,7 @@ enum AppModelContainer {
             WorkBlock.self,
             ProjectLog.self,
             ProjectNote.self,
+            ProjectBoardItem.self,
             ProjectMemoSection.self,
             NextAdjustment.self
         ])
