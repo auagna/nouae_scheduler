@@ -17,11 +17,16 @@ struct OnboardingView: View {
     @AppStorage("nouae.onboarding.firstProject") private var hasCreatedFirstProject = false
     @AppStorage("nouae.onboarding.firstRawTask") private var hasCreatedFirstRawTask = false
     @AppStorage("nouae.onboarding.firstWorkBlock") private var hasCreatedFirstWorkBlock = false
+    @AppStorage("nouae.onboarding.firstLog") private var hasCreatedFirstLog = false
 
     @State private var step: OnboardingStep = .welcome
     @State private var areaTitle = "공부"
     @State private var projectTitle = "기능사 공부"
     @State private var rawTaskTitle = "도면 연습"
+    @State private var firstLogContent = "첫 흐름을 만들었습니다."
+    @State private var firstNextAdjustment = "내일도 10분 블록으로 시작하기"
+    @State private var firstMoodTags: Set<String> = ["집중"]
+    @State private var firstBlockerTags: Set<String> = []
     @State private var selectedAreaId: UUID?
     @State private var selectedProjectId: UUID?
     @State private var message: String?
@@ -107,6 +112,16 @@ struct OnboardingView: View {
             FirstWorkBlockStepView(projects: projects, rawTasks: rawTasks, isWorking: isWorking) {
                 Task { await createFirstWorkBlock() }
             }
+        case .firstLog:
+            FirstLogStepView(
+                content: $firstLogContent,
+                nextAdjustment: $firstNextAdjustment,
+                moodTags: $firstMoodTags,
+                blockerTags: $firstBlockerTags,
+                isWorking: isWorking
+            ) {
+                Task { await createFirstLog() }
+            }
         }
     }
 
@@ -125,7 +140,7 @@ struct OnboardingView: View {
             Button {
                 moveNext()
             } label: {
-                Label(step == .firstWorkBlock ? "Start nou ae" : "Next", systemImage: "chevron.right")
+                Label(step == .firstLog ? "Start nou ae" : "Next", systemImage: "chevron.right")
             }
             .buttonStyle(.borderedProminent)
         }
@@ -141,6 +156,7 @@ struct OnboardingView: View {
         case .firstProject: return "Area 안에 Project를 만듭니다."
         case .firstRawTask: return "생각을 빠르게 붙잡습니다."
         case .firstWorkBlock: return "시간 위에 배치합니다."
+        case .firstLog: return "짧은 회고를 남깁니다."
         }
     }
 
@@ -162,6 +178,8 @@ struct OnboardingView: View {
             return "제목만 입력하면 됩니다. 자세한 것은 Plan에서 배치할 때 정합니다."
         case .firstWorkBlock:
             return "09:00 row 안의 00, 10, 20 column처럼 10분 단위로 조립됩니다."
+        case .firstLog:
+            return "Mood, Blocker, Next Adjustment를 짧게 남기면 Dashboard와 Project Dashboard에 반영됩니다."
         }
     }
 
@@ -171,7 +189,7 @@ struct OnboardingView: View {
     }
 
     private func moveNext() {
-        guard step != .firstWorkBlock else {
+        guard step != .firstLog else {
             hasCompletedOnboarding = true
             return
         }
@@ -272,6 +290,27 @@ struct OnboardingView: View {
             services.calendarSync.scheduleSync(block: block)
             hasCreatedFirstWorkBlock = true
             message = "\(block.title) WorkBlock을 09:00에 배치했습니다."
+        }
+    }
+
+    private func createFirstLog() async {
+        await run {
+            let project = selectedProject()
+            try stores.logStore.createLog(
+                logType: .daily,
+                areaId: project?.areaId,
+                projectId: project?.id,
+                workBlockId: nil,
+                title: "First Log",
+                focusLevel: 3,
+                moodTags: Array(firstMoodTags).sorted(),
+                blockerTags: Array(firstBlockerTags).sorted(),
+                blockerNote: "",
+                nextAdjustment: firstNextAdjustment,
+                content: firstLogContent
+            )
+            hasCreatedFirstLog = true
+            message = "첫 Log를 남겼습니다."
         }
     }
 
@@ -478,6 +517,67 @@ private struct FirstWorkBlockStepView: View {
                 else { Label("첫 WorkBlock 배치", systemImage: "clock.badge.checkmark") }
             }
             .buttonStyle(.borderedProminent)
+        }
+    }
+}
+
+private struct FirstLogStepView: View {
+    @Binding var content: String
+    @Binding var nextAdjustment: String
+    @Binding var moodTags: Set<String>
+    @Binding var blockerTags: Set<String>
+    let isWorking: Bool
+    let onCreate: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Log는 감정 일기가 아니라 작업 흐름을 해석하기 위한 짧은 reflection data입니다.")
+                .font(.subheadline)
+            groupedTagPicker(title: "Mood Quick Check", groups: LogTaxonomy.moodGroups, selection: $moodTags)
+            groupedTagPicker(title: "Blocker", groups: Array(LogTaxonomy.blockerGroups.prefix(3)), selection: $blockerTags)
+            TextField("짧은 회고", text: $content, axis: .vertical)
+                .lineLimit(2...4)
+                .textFieldStyle(.roundedBorder)
+            TextField("다음 조정", text: $nextAdjustment, axis: .vertical)
+                .lineLimit(1...3)
+                .textFieldStyle(.roundedBorder)
+            Button(action: onCreate) {
+                if isWorking { ProgressView() }
+                else { Label("첫 Log 저장", systemImage: "square.and.pencil") }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+
+    private func groupedTagPicker(title: String, groups: [LogTagGroup], selection: Binding<Set<String>>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(groups) { group in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(group.tags.prefix(4), id: \.self) { tag in
+                            Button {
+                                var values = selection.wrappedValue
+                                if values.contains(tag) {
+                                    values.remove(tag)
+                                } else {
+                                    values.insert(tag)
+                                }
+                                selection.wrappedValue = values
+                            } label: {
+                                Text(tag)
+                                    .font(.caption2.weight(.medium))
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 5)
+                                    .background(selection.wrappedValue.contains(tag) ? Color.accentColor.opacity(0.16) : Color(uiColor: .tertiarySystemGroupedBackground), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
         }
     }
 }
