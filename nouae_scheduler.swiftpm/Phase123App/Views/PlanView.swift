@@ -8,6 +8,7 @@ struct PlanView: View {
     @Query(sort: \RawTask.createdAt, order: .reverse) private var tasks: [RawTask]
     @Query(sort: \Project.updatedAt, order: .reverse) private var projects: [Project]
     @Query(sort: \WorkBlock.startAt) private var blocks: [WorkBlock]
+    @Query(sort: \Routine.updatedAt, order: .reverse) private var routines: [Routine]
 
     @AppStorage("nouae.sharedSelectedDate") private var sharedSelectedDateTime: Double = Date().timeIntervalSinceReferenceDate
     @State private var captureTitle = ""
@@ -17,6 +18,7 @@ struct PlanView: View {
     @State private var placementTask: RawTask?
     @State private var completedLogBlock: WorkBlock?
     @State private var unplanCandidate: WorkBlock?
+    @State private var showingAddRoutine = false
     @State private var message: String?
 
     var body: some View {
@@ -54,6 +56,18 @@ struct PlanView: View {
             }
             .sheet(item: $completedLogBlock) { block in
                 LogEditorSheet(initialProjectId: block.projectId, initialWorkBlockId: block.id)
+            }
+            .sheet(isPresented: $showingAddRoutine) {
+                AddRoutineSheet(projects: activeProjects, initialDate: boardDate) { title, projectId, startAt, durationMinutes, weekdayMask, notes in
+                    createRoutine(
+                        title: title,
+                        projectId: projectId,
+                        startAt: startAt,
+                        durationMinutes: durationMinutes,
+                        weekdayMask: weekdayMask,
+                        notes: notes
+                    )
+                }
             }
             .confirmationDialog("WorkBlock 배치를 취소할까요?", isPresented: unplanConfirmationBinding, titleVisibility: .visible) {
                 Button("Task Inbox로 되돌리기", role: .destructive) {
@@ -104,6 +118,15 @@ struct PlanView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            RoutineTemplatesPanel(
+                routines: todaysRoutines,
+                projects: projects,
+                selectedDate: boardDate,
+                onAddRoutine: { showingAddRoutine = true },
+                onGenerate: materializeRoutine
+            )
+
             List(inboxTasks) { task in
                 RawTaskRow(task: task) { placementTask = task }
                     .draggable(task.id.uuidString)
@@ -171,11 +194,56 @@ struct PlanView: View {
     private var inboxTasks: [RawTask] { tasks.filter { stores.rawTaskStore.isVisibleInInbox($0) } }
     private var activeProjects: [Project] { projects.filter { $0.status != .archived } }
     private var dayBlocks: [WorkBlock] { blocks.filter { Calendar.current.isDate($0.startAt, inSameDayAs: boardDate) } }
+    private var todaysRoutines: [Routine] {
+        routines
+            .filter { $0.occurs(on: boardDate) }
+            .sorted { $0.startMinuteOfDay < $1.startMinuteOfDay }
+    }
     private var unplanConfirmationBinding: Binding<Bool> {
         Binding(
             get: { unplanCandidate != nil },
             set: { if !$0 { unplanCandidate = nil } }
         )
+    }
+
+    private func createRoutine(title: String, projectId: UUID?, startAt: Date, durationMinutes: Int, weekdayMask: Int, notes: String) {
+        let project = projects.first { $0.id == projectId }
+        let components = Calendar.current.dateComponents([.hour, .minute], from: startAt)
+        let startMinute = (components.hour ?? 9) * 60 + (components.minute ?? 0)
+        let frequency: RoutineFrequency
+        if weekdayMask == RoutineWeekday.everyDayMask {
+            frequency = .daily
+        } else if weekdayMask == RoutineWeekday.weekdaysMask {
+            frequency = .weekdays
+        } else {
+            frequency = .custom
+        }
+
+        do {
+            _ = try stores.routineStore.createRoutine(
+                title: title,
+                areaId: project?.areaId,
+                projectId: projectId,
+                frequency: frequency,
+                weekdayMask: weekdayMask,
+                startMinuteOfDay: startMinute,
+                durationMinutes: durationMinutes,
+                notes: notes
+            )
+            message = "Routine template을 만들었습니다."
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+
+    private func materializeRoutine(_ routine: Routine) {
+        do {
+            let result = try stores.routineStore.materializeRoutine(routine, on: boardDate)
+            services.calendarSync.scheduleSync(block: result.block)
+            message = "Routine Occurrence를 WorkBlock으로 배치했습니다."
+        } catch {
+            message = error.localizedDescription
+        }
     }
 
     private func capture() {
@@ -263,6 +331,199 @@ struct PlanView: View {
         let sharedDate = Date(timeIntervalSinceReferenceDate: sharedSelectedDateTime)
         if !Calendar.current.isDate(sharedDate, inSameDayAs: boardDate) {
             boardDate = sharedDate
+        }
+    }
+}
+
+private struct RoutineTemplatesPanel: View {
+    let routines: [Routine]
+    let projects: [Project]
+    let selectedDate: Date
+    let onAddRoutine: () -> Void
+    let onGenerate: (Routine) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Routine Templates")
+                        .font(.headline)
+                    Text("반복 가능한 생활·작업 시간을 오늘의 WorkBlock으로 만듭니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button {
+                    onAddRoutine()
+                } label: {
+                    Image(systemName: "plus.circle")
+                }
+                .accessibilityLabel("Routine 추가")
+            }
+
+            if routines.isEmpty {
+                Text("선택한 날짜에 해당하는 Routine이 없습니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(routines.prefix(4)) { routine in
+                        RoutineTemplateRow(
+                            routine: routine,
+                            project: projects.first { $0.id == routine.projectId },
+                            selectedDate: selectedDate,
+                            onGenerate: { onGenerate(routine) }
+                        )
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(Color(uiColor: .tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+private struct RoutineTemplateRow: View {
+    let routine: Routine
+    let project: Project?
+    let selectedDate: Date
+    let onGenerate: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Circle()
+                .fill(Color(calendarHex: project?.calendarColorHex))
+                .frame(width: 9, height: 9)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(routine.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Button("오늘 배치") {
+                onGenerate()
+            }
+            .buttonStyle(.bordered)
+            .font(.caption.weight(.semibold))
+        }
+        .padding(10)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var subtitle: String {
+        let start = Calendar.current.date(
+            byAdding: .minute,
+            value: routine.startMinuteOfDay,
+            to: Calendar.current.startOfDay(for: selectedDate)
+        ) ?? selectedDate
+        let end = Calendar.current.date(byAdding: .minute, value: routine.durationMinutes, to: start) ?? start
+        let projectTitle = project?.title ?? "BLOCK"
+        return "\(projectTitle) · \(start.formatted(date: .omitted, time: .shortened)) - \(end.formatted(date: .omitted, time: .shortened))"
+    }
+}
+
+private struct AddRoutineSheet: View {
+    let projects: [Project]
+    let onSave: (String, UUID?, Date, Int, Int, String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var title = ""
+    @State private var projectId: UUID?
+    @State private var startAt: Date
+    @State private var durationMinutes = 60
+    @State private var selectedWeekdays = Set(RoutineWeekday.allCases.map { $0.rawValue })
+    @State private var notes = ""
+
+    init(
+        projects: [Project],
+        initialDate: Date,
+        onSave: @escaping (String, UUID?, Date, Int, Int, String) -> Void
+    ) {
+        self.projects = projects
+        self.onSave = onSave
+        let start = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: initialDate) ?? initialDate
+        _startAt = State(initialValue: start)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Routine") {
+                    TextField("루틴 이름", text: $title)
+                    Picker("Project", selection: $projectId) {
+                        Text("프로젝트 없음 · BLOCK").tag(nil as UUID?)
+                        ForEach(projects) { project in
+                            Text(project.title).tag(project.id as UUID?)
+                        }
+                    }
+                }
+
+                Section("Time Template") {
+                    DatePicker("시작 시간", selection: $startAt, displayedComponents: .hourAndMinute)
+                    Stepper("길이 \(durationMinutes)분", value: $durationMinutes, in: 10...240, step: 10)
+                }
+
+                Section("Repeat") {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 8) {
+                        ForEach(RoutineWeekday.allCases) { weekday in
+                            Button {
+                                toggleWeekday(weekday)
+                            } label: {
+                                Text(weekday.shortTitle)
+                                    .font(.caption.weight(.semibold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        selectedWeekdays.contains(weekday.rawValue) ? Color.accentColor.opacity(0.18) : Color(uiColor: .secondarySystemGroupedBackground),
+                                        in: Capsule()
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                Section("Notes") {
+                    TextField("메모", text: $notes, axis: .vertical)
+                }
+            }
+            .navigationTitle("New Routine")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장") {
+                        onSave(title, projectId, startAt, durationMinutes, weekdayMask, notes)
+                        dismiss()
+                    }
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedWeekdays.isEmpty)
+                }
+            }
+        }
+    }
+
+    private var weekdayMask: Int {
+        RoutineWeekday.allCases.reduce(0) { value, weekday in
+            selectedWeekdays.contains(weekday.rawValue) ? value | weekday.maskValue : value
+        }
+    }
+
+    private func toggleWeekday(_ weekday: RoutineWeekday) {
+        if selectedWeekdays.contains(weekday.rawValue) {
+            selectedWeekdays.remove(weekday.rawValue)
+        } else {
+            selectedWeekdays.insert(weekday.rawValue)
         }
     }
 }
