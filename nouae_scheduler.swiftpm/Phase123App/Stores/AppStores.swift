@@ -4,6 +4,7 @@ import SwiftData
 @MainActor
 final class AppStores: ObservableObject {
     let projectAreaStore: ProjectAreaStore
+    let routineStore: RoutineStore
     let projectStore: ProjectStore
     let rawTaskStore: RawTaskStore
     let workBlockStore: WorkBlockStore
@@ -15,6 +16,7 @@ final class AppStores: ObservableObject {
 
     init(context: ModelContext) {
         projectAreaStore = ProjectAreaStore(context: context)
+        routineStore = RoutineStore(context: context)
         projectStore = ProjectStore(context: context)
         rawTaskStore = RawTaskStore(context: context)
         workBlockStore = WorkBlockStore(context: context)
