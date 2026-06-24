@@ -8,7 +8,6 @@ struct PlanView: View {
     @Query(sort: \RawTask.createdAt, order: .reverse) private var tasks: [RawTask]
     @Query(sort: \Project.updatedAt, order: .reverse) private var projects: [Project]
     @Query(sort: \WorkBlock.startAt) private var blocks: [WorkBlock]
-    @Query(sort: \Routine.updatedAt, order: .reverse) private var routines: [Routine]
 
     @AppStorage("nouae.sharedSelectedDate") private var sharedSelectedDateTime: Double = Date().timeIntervalSinceReferenceDate
     @State private var captureTitle = ""
@@ -195,9 +194,7 @@ struct PlanView: View {
     private var activeProjects: [Project] { projects.filter { $0.status != .archived } }
     private var dayBlocks: [WorkBlock] { blocks.filter { Calendar.current.isDate($0.startAt, inSameDayAs: boardDate) } }
     private var todaysRoutines: [Routine] {
-        routines
-            .filter { $0.occurs(on: boardDate) }
-            .sorted { $0.startMinuteOfDay < $1.startMinuteOfDay }
+        stores.routineStore.activeRoutines(on: boardDate)
     }
     private var unplanConfirmationBinding: Binding<Bool> {
         Binding(
