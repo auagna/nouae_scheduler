@@ -3,87 +3,140 @@ import SwiftUI
 
 struct ProjectDashboardView: View {
     let project: Project
+
     @EnvironmentObject private var stores: AppStores
+    @Query(sort: \Project.updatedAt, order: .reverse) private var allProjects: [Project]
+    @Query(sort: \ProjectArea.updatedAt, order: .reverse) private var areas: [ProjectArea]
     @Query private var blocks: [WorkBlock]
     @Query(sort: \RawTask.createdAt, order: .reverse) private var tasks: [RawTask]
     @Query(sort: \ProjectMemoSection.order) private var sections: [ProjectMemoSection]
     @Query(sort: \ProjectLog.createdAt, order: .reverse) private var logs: [ProjectLog]
     @Query(sort: \NextAdjustment.createdAt, order: .reverse) private var adjustments: [NextAdjustment]
     @Query(sort: \ProjectBoardItem.updatedAt, order: .reverse) private var boardItems: [ProjectBoardItem]
+    @Query(sort: \ProjectNote.updatedAt, order: .reverse) private var notes: [ProjectNote]
+
+    @AppStorage("nouae.sharedSelectedDate") private var sharedSelectedDate = Date().timeIntervalSince1970
+    @State private var selectedQueue: ProjectDashboardQueueKind = .next
     @State private var showingPromptExport = false
+    @State private var showingLogEditor = false
+    @State private var logTargetWorkBlockId: UUID?
 
     var body: some View {
         GeometryReader { geometry in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    ProjectCommandHeaderCard(project: project, progress: progress)
+            AppScreenContainer(spacing: 16) {
+                ProjectMVPHeader(
+                    projectTitle: project.title,
+                    areaName: areaTitle,
+                    projectType: project.type.title,
+                    lifecycleTitle: lifecycleTitle,
+                    areaColor: areaColor,
+                    calendarState: areaCalendarState,
+                    reminderState: areaReminderState,
+                    lastActivityText: lastActivityText,
+                    isArchived: isArchived
+                )
 
-                    #if DEBUG
-                    Text("ProjectMissionLayout ACTIVE Phase123")
-                        .font(.caption)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.red, in: Capsule())
-                    #endif
+                #if DEBUG
+                Text("ProjectMVPDashboardLayout ACTIVE L17")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.red, in: Capsule())
+                #endif
 
-                    if geometry.size.width >= 880 {
-                        HStack(alignment: .top, spacing: 14) {
-                            VStack(alignment: .leading, spacing: 14) {
-                                ProjectPulsePanel(
-                                    blocks: projectBlocks,
-                                    logs: projectLogs,
-                                    projectColor: projectColor
-                                )
-                                ProjectThinkingSpacePanel(sections: projectSections)
-                                ProjectPagePreviewPanel(project: project, items: projectBoardItems)
-                                ProjectTrackerPanel(blocks: projectBlocks, logs: projectLogs, projectColor: projectColor)
-                            }
-                            .frame(width: geometry.size.width * 0.38)
+                if geometry.size.width >= 900 {
+                    HStack(alignment: .top, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 16) {
+                            ProjectMVPCurrentFocusPanel(
+                                focus: currentFocusSnapshot,
+                                suggestedNext: nextQueueItems.first,
+                                accentColor: areaColor,
+                                onStart: startCurrentFocus,
+                                onComplete: completeCurrentFocus,
+                                onDelay: delayCurrentFocus,
+                                onStop: stopCurrentFocus,
+                                onOpenPlan: openCurrentFocusInPlan
+                            )
 
-                            VStack(alignment: .leading, spacing: 14) {
-                                ProjectTodayWorkPanel(blocks: todayBlocks)
-                                ProjectInboxPanel(tasks: projectTasks)
-                                ProjectNextAdjustmentPanel(adjustments: projectAdjustments)
-                            }
-                            .frame(width: geometry.size.width * 0.32)
+                            ProjectMVPOperationalQueuePanel(
+                                selectedKind: $selectedQueue,
+                                counts: queueCounts,
+                                items: queueItems(for: selectedQueue),
+                                onOpenPlan: openQueueItemInPlan,
+                                onWriteLog: openLogForQueueItem
+                            )
 
-                            VStack(alignment: .leading, spacing: 14) {
-                                ProjectRecentLogsPanel(logs: projectLogs)
-                                ProjectIntelligencePanel(insights: projectInsights)
-                            }
-                            .frame(maxWidth: .infinity)
+                            ProjectMVPTodayTimelinePanel(
+                                blocks: todayTimelineBlocks,
+                                focusBlockId: currentFocusBlock?.id,
+                                accentColor: areaColor,
+                                onOpenPlan: openTodayInPlan
+                            )
                         }
-                    } else {
-                        VStack(alignment: .leading, spacing: 14) {
-                            ProjectPulsePanel(blocks: projectBlocks, logs: projectLogs, projectColor: projectColor)
-                            ProjectTodayWorkPanel(blocks: todayBlocks)
-                            ProjectInboxPanel(tasks: projectTasks)
-                            ProjectNextAdjustmentPanel(adjustments: projectAdjustments)
-                            ProjectThinkingSpacePanel(sections: projectSections)
-                            ProjectPagePreviewPanel(project: project, items: projectBoardItems)
-                            ProjectTrackerPanel(blocks: projectBlocks, logs: projectLogs, projectColor: projectColor)
-                            ProjectRecentLogsPanel(logs: projectLogs)
-                            ProjectIntelligencePanel(insights: projectInsights)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                        VStack(alignment: .leading, spacing: 16) {
+                            ProjectMVPBriefPanel(
+                                goal: project.goal,
+                                sections: projectBriefSections,
+                                onAddMissingSections: addMissingTemplateSections
+                            )
+
+                            ProjectMVPNextAdjustmentPanel(active: activeAdjustments, recent: recentAdjustments)
+                            ProjectMVPSpacePreviewPanel(project: project, areas: areas, projects: allProjects, notes: projectNotes, boardItems: projectBoardItems)
+                            ProjectMVPRecentReflectionPanel(logs: recentProjectLogs, onWriteLog: openProjectLog)
+                            ProjectMVPCompactTrackerPanel(summary: trackerSummary, accentColor: areaColor)
+                            ProjectMVPAttentionPanel(items: attentionItems, compactInsight: compactInsight)
                         }
+                        .frame(width: max(320, geometry.size.width * 0.34), alignment: .topLeading)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 16) {
+                        ProjectMVPCurrentFocusPanel(
+                            focus: currentFocusSnapshot,
+                            suggestedNext: nextQueueItems.first,
+                            accentColor: areaColor,
+                            onStart: startCurrentFocus,
+                            onComplete: completeCurrentFocus,
+                            onDelay: delayCurrentFocus,
+                            onStop: stopCurrentFocus,
+                            onOpenPlan: openCurrentFocusInPlan
+                        )
+
+                        ProjectMVPOperationalQueuePanel(
+                            selectedKind: $selectedQueue,
+                            counts: queueCounts,
+                            items: queueItems(for: selectedQueue),
+                            onOpenPlan: openQueueItemInPlan,
+                            onWriteLog: openLogForQueueItem
+                        )
+
+                        ProjectMVPTodayTimelinePanel(
+                            blocks: todayTimelineBlocks,
+                            focusBlockId: currentFocusBlock?.id,
+                            accentColor: areaColor,
+                            onOpenPlan: openTodayInPlan
+                        )
+
+                        ProjectMVPBriefPanel(
+                            goal: project.goal,
+                            sections: projectBriefSections,
+                            onAddMissingSections: addMissingTemplateSections
+                        )
+
+                        ProjectMVPNextAdjustmentPanel(active: activeAdjustments, recent: recentAdjustments)
+                        ProjectMVPSpacePreviewPanel(project: project, areas: areas, projects: allProjects, notes: projectNotes, boardItems: projectBoardItems)
+                        ProjectMVPRecentReflectionPanel(logs: recentProjectLogs, onWriteLog: openProjectLog)
+                        ProjectMVPCompactTrackerPanel(summary: trackerSummary, accentColor: areaColor)
+                        ProjectMVPAttentionPanel(items: attentionItems, compactInsight: compactInsight)
                     }
                 }
-                .padding(18)
             }
-            .background(Color(uiColor: .systemGroupedBackground))
         }
         .navigationTitle(project.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink {
-                    ProjectPageView(project: project)
-                } label: {
-                    Image(systemName: "square.grid.2x2")
-                }
-                .accessibilityLabel("Open Project Page")
-            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showingPromptExport = true
@@ -92,33 +145,81 @@ struct ProjectDashboardView: View {
                 }
                 .accessibilityLabel("Project Analysis Prompt")
             }
+
             ToolbarItem(placement: .topBarTrailing) {
-                Menu(project.status.title) {
-                    ForEach(ProjectStatus.allCases) { status in
-                        Button(status.title) { changeStatus(status) }
+                Menu {
+                    Button("Planned") { changeStatus(.planning) }
+                    Button("Active") { changeStatus(.active) }
+                    Button("Completed") { changeStatus(.completed) }
+                    Divider()
+                    Button(isArchived ? "Restore to Planned" : "Archive") {
+                        changeStatus(isArchived ? .planning : .archived)
                     }
+                } label: {
+                    Label(lifecycleTitle, systemImage: "ellipsis.circle")
                 }
             }
         }
         .sheet(isPresented: $showingPromptExport) {
             PromptExportView(initialType: .projectAnalysis, selectedProjectId: project.id)
         }
+        .sheet(isPresented: $showingLogEditor) {
+            LogEditorSheet(initialProjectId: project.id, initialWorkBlockId: logTargetWorkBlockId)
+        }
+    }
+
+    private var projectArea: ProjectArea? {
+        guard let areaId = project.areaId else { return nil }
+        return areas.first { $0.id == areaId }
+    }
+
+    private var areaTitle: String {
+        projectArea?.title ?? "Area 미지정"
+    }
+
+    private var areaColor: Color {
+        Color(calendarHex: projectArea?.calendarColorHex ?? project.calendarColorHex)
+    }
+
+    private var areaCalendarState: String {
+        if projectArea?.calendarIdentifier != nil || project.calendarIdentifier != nil {
+            return (projectArea?.syncState ?? project.syncState).title
+        }
+        return "미연결"
+    }
+
+    private var areaReminderState: String {
+        if projectArea?.reminderListIdentifier != nil || project.reminderListIdentifier != nil {
+            return (projectArea?.syncState ?? project.syncState).title
+        }
+        return "미연결"
+    }
+
+    private var isArchived: Bool {
+        project.archivedAt != nil || project.status == .archived
+    }
+
+    private var lifecycleTitle: String {
+        if isArchived { return "Archived" }
+        if project.status == .completed { return "Completed" }
+        if project.status == .active { return "Active" }
+        return "Planned"
     }
 
     private var projectBlocks: [WorkBlock] {
-        blocks.filter { $0.projectId == project.id }.sorted { $0.startAt < $1.startAt }
-    }
-
-    private var todayBlocks: [WorkBlock] {
-        projectBlocks.filter { Calendar.current.isDate($0.startAt, inSameDayAs: Date()) }
+        blocks
+            .filter { $0.projectId == project.id }
+            .sorted { $0.startAt < $1.startAt }
     }
 
     private var projectTasks: [RawTask] {
-        tasks.filter { $0.projectId == project.id && stores.rawTaskStore.isVisibleInInbox($0) }
+        tasks.filter { $0.projectId == project.id && !$0.isConvertedToBlock }
     }
 
     private var projectSections: [ProjectMemoSection] {
-        sections.filter { $0.projectId == project.id }.sorted { $0.order < $1.order }
+        sections
+            .filter { $0.projectId == project.id }
+            .sorted { $0.order < $1.order }
     }
 
     private var projectLogs: [ProjectLog] {
@@ -126,415 +227,363 @@ struct ProjectDashboardView: View {
     }
 
     private var projectAdjustments: [NextAdjustment] {
-        adjustments.filter { $0.projectId == project.id && $0.isActive }
+        adjustments.filter { $0.projectId == project.id }
     }
 
     private var projectBoardItems: [ProjectBoardItem] {
         boardItems.filter { $0.projectId == project.id && !$0.isArchived }
     }
 
-    private var progress: Double {
-        stores.workBlockStore.calculateProjectProgress(blocks: projectBlocks)
+    private var projectNotes: [ProjectNote] {
+        notes.filter { $0.projectId == project.id && !$0.isArchived }
     }
 
-    private var projectColor: Color {
-        Color(calendarHex: project.calendarColorHex)
+    private var recentProjectLogs: [ProjectLog] {
+        Array(projectLogs.prefix(3))
     }
 
-    private var projectInsights: [String] {
-        var values: [String] = []
-        if project.status == .active && projectBlocks.filter({ $0.startAt > Calendar.current.date(byAdding: .day, value: -7, to: Date())! }).isEmpty {
-            values.append("active 상태지만 최근 7일간 WorkBlock이 없습니다.")
+    private var activeAdjustments: [NextAdjustment] {
+        projectAdjustments.filter(\.isActive)
+    }
+
+    private var recentAdjustments: [NextAdjustment] {
+        Array(projectAdjustments.filter { !$0.isActive }.prefix(2))
+    }
+
+    private var todayRange: (start: Date, end: Date) {
+        let start = Calendar.current.startOfDay(for: Date())
+        let end = Calendar.current.date(byAdding: .day, value: 1, to: start) ?? Date()
+        return (start, end)
+    }
+
+    private var todayBlocks: [WorkBlock] {
+        let range = todayRange
+        return projectBlocks.filter { $0.startAt < range.end && $0.endAt > range.start }
+    }
+
+    private var currentFocusBlock: WorkBlock? {
+        if let running = projectBlocks.first(where: { $0.executionState == .inProgress }) {
+            return running
         }
-        if projectBlocks.filter({ $0.executionState == .delayed }).count >= 2 {
-            values.append("미룸이 반복됩니다. 다음 조정에서 블록 길이를 낮춰보는 것이 좋습니다.")
+
+        let now = Date()
+        return todayBlocks
+            .filter { $0.executionState == .planned }
+            .sorted { abs($0.startAt.timeIntervalSince(now)) < abs($1.startAt.timeIntervalSince(now)) }
+            .first
+    }
+
+    private var todayTimelineBlocks: [WorkBlock] {
+        todayBlocks.filter { $0.id != currentFocusBlock?.id }
+    }
+
+    private var currentFocusSnapshot: ProjectDashboardFocusSnapshot? {
+        if let block = currentFocusBlock {
+            return ProjectDashboardFocusSnapshot(
+                id: block.id.uuidString,
+                title: block.title,
+                subtitle: "\(block.startAt.formatted(date: .omitted, time: .shortened)) - \(block.endAt.formatted(date: .omitted, time: .shortened))",
+                areaText: areaTitle,
+                memo: block.memo,
+                stateText: block.executionState.title,
+                syncText: block.syncState.title,
+                remainingText: remainingText(for: block),
+                blockId: block.id
+            )
         }
-        if projectLogs.isEmpty {
-            values.append("아직 Log가 없습니다. 짧은 회고가 프로젝트의 방향성을 만듭니다.")
+
+        if let next = nextQueueItems.first {
+            return ProjectDashboardFocusSnapshot(
+                id: next.id,
+                title: next.title,
+                subtitle: next.subtitle,
+                areaText: areaTitle,
+                memo: next.detail,
+                stateText: "Next",
+                syncText: next.syncText,
+                remainingText: nil,
+                blockId: next.blockId
+            )
         }
-        return values.isEmpty ? ["현재 프로젝트 흐름은 안정적입니다. 다음 실행 블록을 유지하세요."] : values
+
+        return nil
+    }
+
+    private var nextQueueItems: [ProjectDashboardQueueItem] {
+        let now = Date()
+        let taskItems = projectTasks
+            .filter { ($0.scheduledAt ?? .distantPast) <= now }
+            .map {
+                ProjectDashboardQueueItem(
+                    kind: .next,
+                    source: .rawTask,
+                    sourceId: $0.id,
+                    rawTaskId: $0.id,
+                    blockId: nil,
+                    title: $0.title,
+                    subtitle: $0.scheduledAt == nil ? "RawTask · 아직 배치 전" : "RawTask · \(shortDate($0.scheduledAt))",
+                    detail: "Plan에서 WorkBlock으로 배치할 수 있습니다.",
+                    syncText: $0.syncState.title,
+                    date: $0.scheduledAt ?? $0.createdAt
+                )
+            }
+
+        let blockItems = projectBlocks
+            .filter { $0.executionState == .planned && $0.id != currentFocusBlock?.id }
+            .map { queueItem(for: $0, kind: .next, detail: "가까운 예정 WorkBlock입니다.") }
+
+        return (taskItems + blockItems).sorted { $0.date < $1.date }
+    }
+
+    private var waitingQueueItems: [ProjectDashboardQueueItem] {
+        let now = Date()
+        let waitingTasks = projectTasks
+            .filter { ($0.scheduledAt ?? .distantPast) > now }
+            .map {
+                ProjectDashboardQueueItem(
+                    kind: .waiting,
+                    source: .rawTask,
+                    sourceId: $0.id,
+                    rawTaskId: $0.id,
+                    blockId: nil,
+                    title: $0.title,
+                    subtitle: "대기 중 · \(shortDate($0.scheduledAt))",
+                    detail: "예약된 날짜 이후 Next로 돌아옵니다.",
+                    syncText: $0.syncState.title,
+                    date: $0.scheduledAt ?? $0.createdAt
+                )
+            }
+
+        let delayedBlocks = projectBlocks
+            .filter { $0.executionState == .delayed }
+            .map { queueItem(for: $0, kind: .waiting, detail: "미룸 처리된 WorkBlock입니다.") }
+
+        return (waitingTasks + delayedBlocks).sorted { $0.date < $1.date }
+    }
+
+    private var reviewQueueItems: [ProjectDashboardQueueItem] {
+        projectBlocks
+            .filter { $0.executionState == .completed && !hasLog(for: $0) }
+            .map { queueItem(for: $0, kind: .review, detail: "완료됐지만 아직 회고 Log가 없습니다.") }
+            .sorted { $0.date > $1.date }
+    }
+
+    private var doneQueueItems: [ProjectDashboardQueueItem] {
+        projectBlocks
+            .filter { $0.executionState == .completed && hasLog(for: $0) }
+            .map { queueItem(for: $0, kind: .done, detail: "회고까지 연결된 완료 항목입니다.") }
+            .sorted { $0.date > $1.date }
+    }
+
+    private var queueCounts: [ProjectDashboardQueueKind: Int] {
+        [
+            .next: nextQueueItems.count,
+            .waiting: waitingQueueItems.count,
+            .review: reviewQueueItems.count,
+            .done: doneQueueItems.count
+        ]
+    }
+
+    private var projectBriefSections: [ProjectMemoSection] {
+        Array(projectSections.prefix(4))
+    }
+
+    private var trackerSummary: ProjectDashboardTrackerSummary {
+        let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        let recentBlocks = projectBlocks.filter { $0.startAt >= weekAgo }
+        let recentLogs = projectLogs.filter { $0.createdAt >= weekAgo }
+        let completed = recentBlocks.filter { $0.executionState == .completed }.count
+        let actionable = max(1, recentBlocks.filter { $0.executionState != .stopped }.count)
+        let minutes = recentBlocks.reduce(0) { total, block in
+            total + max(0, Int(block.endAt.timeIntervalSince(block.startAt) / 60))
+        }
+
+        return ProjectDashboardTrackerSummary(
+            activity: activityDots(days: 7),
+            weeklyMinutes: minutes,
+            completedBlocks: completed,
+            planDoneRatio: Double(completed) / Double(actionable),
+            logCount: recentLogs.count,
+            recentActivity: latestActivityText,
+            topMood: topTag(recentLogs.flatMap { $0.moodTags }),
+            topBlocker: topTag(recentLogs.flatMap { $0.blockerTags })
+        )
+    }
+
+    private var attentionItems: [ProjectDashboardAttentionItem] {
+        var items: [ProjectDashboardAttentionItem] = []
+
+        if projectArea == nil {
+            items.append(.init(title: "Area 미지정", detail: "Project가 아직 Area에 연결되어 있지 않습니다.", priority: .high, symbolName: "folder.badge.questionmark"))
+        }
+
+        if projectArea?.syncState == .failed || project.syncState == .failed {
+            items.append(.init(title: "Sync 확인 필요", detail: "Area Calendar 또는 Reminder 연결 상태를 Settings에서 확인하세요.", priority: .high, symbolName: "exclamationmark.arrow.triangle.2.circlepath"))
+        }
+
+        let unresolved = todayBlocks.filter { $0.endAt < Date() && ($0.executionState == .planned || $0.executionState == .inProgress) }
+        if !unresolved.isEmpty {
+            items.append(.init(title: "상태 미결정 WorkBlock", detail: "\(unresolved.count)개 블록의 완료 / 미룸 / 중단 선택이 필요합니다.", priority: .medium, symbolName: "clock.badge.exclamationmark"))
+        }
+
+        if reviewQueueItems.count >= 3 {
+            items.append(.init(title: "Review 적체", detail: "회고가 필요한 완료 항목이 \(reviewQueueItems.count)개 남아 있습니다.", priority: .medium, symbolName: "text.bubble"))
+        }
+
+        let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        if project.status == .active && projectBlocks.filter({ $0.startAt > sevenDaysAgo }).isEmpty {
+            items.append(.init(title: "최근 활동 없음", detail: "Active 상태지만 최근 7일간 WorkBlock이 없습니다.", priority: .low, symbolName: "pause.circle"))
+        }
+
+        if project.goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            items.append(.init(title: "Goal 비어 있음", detail: "Project Brief에 목표를 짧게 남겨두면 다음 행동이 선명해집니다.", priority: .low, symbolName: "target"))
+        }
+
+        return items
+    }
+
+    private var compactInsight: String {
+        if reviewQueueItems.count >= 2 {
+            return "완료된 작업이 Review에 머물고 있습니다. 짧은 Log 하나가 Done 흐름을 닫습니다."
+        }
+        if waitingQueueItems.count >= 3 {
+            return "Waiting 항목이 늘고 있습니다. 외부 대기인지 에너지 문제인지 분리해보세요."
+        }
+        if trackerSummary.planDoneRatio >= 0.7 && trackerSummary.completedBlocks > 0 {
+            return "이번 주 완료율이 안정적입니다. 같은 블록 길이를 유지해도 좋습니다."
+        }
+        return "다음 실행 블록 하나와 짧은 회고 하나가 이 프로젝트의 흐름을 선명하게 만듭니다."
+    }
+
+    private var lastActivityText: String {
+        latestActivityText
+    }
+
+    private var latestActivityText: String {
+        let latestBlock = projectBlocks.map(\.updatedAt).max()
+        let latestLog = projectLogs.map(\.updatedAt).max()
+        let latestNote = projectNotes.map(\.updatedAt).max()
+        let latest = [latestBlock, latestLog, latestNote, project.updatedAt].compactMap { $0 }.max() ?? project.updatedAt
+        return latest.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private func queueItems(for kind: ProjectDashboardQueueKind) -> [ProjectDashboardQueueItem] {
+        switch kind {
+        case .next: return nextQueueItems
+        case .waiting: return waitingQueueItems
+        case .review: return reviewQueueItems
+        case .done: return doneQueueItems
+        }
+    }
+
+    private func queueItem(for block: WorkBlock, kind: ProjectDashboardQueueKind, detail: String) -> ProjectDashboardQueueItem {
+        ProjectDashboardQueueItem(
+            kind: kind,
+            source: .workBlock,
+            sourceId: block.id,
+            rawTaskId: block.rawTaskId,
+            blockId: block.id,
+            title: block.title,
+            subtitle: "\(block.executionState.title) · \(block.startAt.formatted(date: .abbreviated, time: .shortened))",
+            detail: detail,
+            syncText: block.syncState.title,
+            date: block.startAt
+        )
+    }
+
+    private func hasLog(for block: WorkBlock) -> Bool {
+        projectLogs.contains { $0.workBlockId == block.id }
+    }
+
+    private func remainingText(for block: WorkBlock) -> String? {
+        let now = Date()
+        if block.endAt <= now { return "종료 시간 지남" }
+        if block.startAt > now {
+            let minutes = max(0, Int(block.startAt.timeIntervalSince(now) / 60))
+            return "\(minutes)분 후 시작"
+        }
+        let minutes = max(0, Int(block.endAt.timeIntervalSince(now) / 60))
+        return "\(minutes)분 남음"
+    }
+
+    private func activityDots(days: Int) -> [Bool] {
+        (0..<days).reversed().map { offset in
+            let date = Calendar.current.date(byAdding: .day, value: -offset, to: Date()) ?? Date()
+            return projectBlocks.contains { Calendar.current.isDate($0.startAt, inSameDayAs: date) } ||
+                projectLogs.contains { Calendar.current.isDate($0.createdAt, inSameDayAs: date) }
+        }
+    }
+
+    private func topTag(_ tags: [String]) -> String? {
+        let counts = Dictionary(grouping: tags, by: { $0 }).mapValues { $0.count }
+        return counts.max { $0.value < $1.value }?.key
+    }
+
+    private func shortDate(_ date: Date?) -> String {
+        guard let date else { return "날짜 없음" }
+        return date.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private func startCurrentFocus() {
+        guard let block = currentFocusBlock else { return }
+        try? stores.workBlockStore.start(block: block)
+    }
+
+    private func completeCurrentFocus() {
+        guard let block = currentFocusBlock else { return }
+        try? stores.workBlockStore.markCompleted(block: block)
+        logTargetWorkBlockId = block.id
+        showingLogEditor = true
+    }
+
+    private func delayCurrentFocus() {
+        guard let block = currentFocusBlock else { return }
+        _ = try? stores.workBlockStore.markDelayed(block: block)
+    }
+
+    private func stopCurrentFocus() {
+        guard let block = currentFocusBlock else { return }
+        try? stores.workBlockStore.markStopped(block: block)
+    }
+
+    private func openCurrentFocusInPlan() {
+        if let block = currentFocusBlock {
+            sharedSelectedDate = block.startAt.timeIntervalSince1970
+        } else {
+            openTodayInPlan()
+        }
+    }
+
+    private func openTodayInPlan() {
+        sharedSelectedDate = Date().timeIntervalSince1970
+    }
+
+    private func openQueueItemInPlan(_ item: ProjectDashboardQueueItem) {
+        sharedSelectedDate = item.date.timeIntervalSince1970
+    }
+
+    private func openLogForQueueItem(_ item: ProjectDashboardQueueItem) {
+        logTargetWorkBlockId = item.blockId
+        showingLogEditor = true
+    }
+
+    private func openProjectLog() {
+        logTargetWorkBlockId = nil
+        showingLogEditor = true
+    }
+
+    private func addMissingTemplateSections() {
+        for section in TemplateDatabase.sections(for: project.type) {
+            let exists = projectSections.contains {
+                $0.title.localizedCaseInsensitiveCompare(section.title) == .orderedSame
+            }
+            if !exists {
+                try? stores.projectStore.addMemoSection(projectId: project.id, title: section.title, content: section.content)
+            }
+        }
     }
 
     private func changeStatus(_ status: ProjectStatus) {
         try? stores.projectStore.updateProjectStatus(project: project, status: status)
-    }
-}
-
-private struct ProjectCommandHeaderCard: View {
-    let project: Project
-    let progress: Double
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Circle()
-                    .fill(projectColor)
-                    .frame(width: 14, height: 14)
-                    .padding(.top, 8)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Project Mission Control")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Text(project.title)
-                        .font(.largeTitle.weight(.bold))
-                    Text(project.goal.isEmpty ? "목표가 아직 비어 있습니다." : project.goal)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 6) {
-                    Text(project.type.title)
-                        .font(.caption)
-                    Text(project.status.title)
-                        .font(.caption.weight(.semibold))
-                    Text(project.syncState.title)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            ProgressView(value: progress)
-                .tint(projectColor)
-            Text("Updated \(project.updatedAt.formatted(date: .abbreviated, time: .shortened))")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .projectCard(accent: projectColor)
-    }
-
-    private var projectColor: Color {
-        Color(calendarHex: project.calendarColorHex)
-    }
-}
-
-private struct ProjectPulsePanel: View {
-    let blocks: [WorkBlock]
-    let logs: [ProjectLog]
-    let projectColor: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            PanelTitle("Project Pulse", subtitle: "실행 상태")
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                PulseMetric(title: "이번 주", value: "\(weekMinutes / 60)h \(weekMinutes % 60)m")
-                PulseMetric(title: "완료", value: "\(blocks.filter { $0.executionState == .completed }.count)")
-                PulseMetric(title: "진행", value: "\(blocks.filter { $0.executionState == .inProgress }.count)")
-                PulseMetric(title: "미룸", value: "\(blocks.filter { $0.executionState == .delayed }.count)")
-                PulseMetric(title: "최근 Log", value: "\(logs.prefix(7).count)")
-                PulseMetric(title: "평균 집중", value: focusAverage)
-            }
-            ActivityDots(blocks: blocks, color: projectColor)
-        }
-        .projectCard()
-    }
-
-    private var weekMinutes: Int {
-        let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-        return blocks
-            .filter { $0.startAt >= weekAgo }
-            .reduce(0) { $0 + max(0, Int($1.endAt.timeIntervalSince($1.startAt) / 60)) }
-    }
-
-    private var focusAverage: String {
-        let levels = logs.compactMap(\.focusLevel)
-        guard !levels.isEmpty else { return "-" }
-        let average = Double(levels.reduce(0, +)) / Double(levels.count)
-        return String(format: "%.1f", average)
-    }
-}
-
-private struct ProjectTodayWorkPanel: View {
-    let blocks: [WorkBlock]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            PanelTitle("Today Work", subtitle: "오늘 움직이는 블록")
-            if blocks.isEmpty {
-                EmptyPanelText("오늘 배치된 WorkBlock이 없습니다.")
-            }
-            ForEach(blocks) { block in
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(block.title)
-                            .font(.subheadline.weight(.semibold))
-                        Text("\(block.startAt.formatted(date: .omitted, time: .shortened)) - \(block.endAt.formatted(date: .omitted, time: .shortened))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Text(block.executionState.title)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 4)
-            }
-        }
-        .projectCard()
-    }
-}
-
-private struct ProjectInboxPanel: View {
-    let tasks: [RawTask]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            PanelTitle("Project Inbox", subtitle: "아직 시간에 배치되지 않은 작업")
-            if tasks.isEmpty {
-                EmptyPanelText("프로젝트 Inbox가 비어 있습니다.")
-            }
-            ForEach(tasks.prefix(6)) { task in
-                HStack {
-                    Image(systemName: "tray")
-                        .foregroundStyle(.secondary)
-                    Text(task.title)
-                        .font(.subheadline)
-                    Spacer()
-                }
-            }
-        }
-        .projectCard()
-    }
-}
-
-private struct ProjectThinkingSpacePanel: View {
-    let sections: [ProjectMemoSection]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            PanelTitle("Thinking Space", subtitle: "Observation, Experiment, Insight, Synthesis")
-            if sections.isEmpty {
-                EmptyPanelText("아직 Thinking Section이 없습니다.")
-            }
-            ForEach(sections.prefix(8)) { section in
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(section.title)
-                        .font(.subheadline.weight(.semibold))
-                    Text(section.content.isEmpty ? "내용 없음" : section.content)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-        }
-        .projectCard()
-    }
-}
-
-private struct ProjectNextAdjustmentPanel: View {
-    let adjustments: [NextAdjustment]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            PanelTitle("Next Adjustment", subtitle: "다음 조정")
-            if adjustments.isEmpty {
-                EmptyPanelText("활성 조정사항이 없습니다.")
-            }
-            ForEach(adjustments.prefix(4)) { item in
-                Text(item.content)
-                    .font(.subheadline)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .projectCard()
-    }
-}
-
-private struct ProjectRecentLogsPanel: View {
-    let logs: [ProjectLog]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            PanelTitle("Recent Logs", subtitle: "최근 회고")
-            if logs.isEmpty {
-                EmptyPanelText("최근 Log가 없습니다.")
-            }
-            ForEach(logs.prefix(3)) { log in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(log.content.isEmpty ? "짧은 회고" : log.content)
-                        .font(.subheadline)
-                        .lineLimit(2)
-                    Text(log.createdAt.formatted(date: .abbreviated, time: .omitted))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .projectCard()
-    }
-}
-
-private struct ProjectPagePreviewPanel: View {
-    let project: Project
-    let items: [ProjectBoardItem]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top) {
-                PanelTitle("Project Page", subtitle: "moodboard / vision board")
-                Spacer()
-                NavigationLink {
-                    ProjectPageView(project: project)
-                } label: {
-                    Label("Open", systemImage: "square.grid.2x2")
-                        .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.bordered)
-            }
-
-            if items.isEmpty {
-                EmptyPanelText("아직 reference나 sketch가 없습니다.")
-            } else {
-                ForEach(items.prefix(3)) { item in
-                    HStack(spacing: 8) {
-                        Image(systemName: item.itemType.symbolName)
-                            .foregroundStyle(Color(calendarHex: item.colorHex))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.title)
-                                .font(.subheadline.weight(.semibold))
-                                .lineLimit(1)
-                            Text(item.itemType.title)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                    }
-                    .padding(9)
-                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-            }
-
-            HStack {
-                Text("References \(items.filter { $0.itemType == .reference || $0.itemType == .link || $0.itemType == .image }.count)")
-                Spacer()
-                Text("Sketches \(items.filter { $0.itemType == .sketch }.count)")
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-        .projectCard()
-    }
-}
-
-private struct ProjectTrackerPanel: View {
-    let blocks: [WorkBlock]
-    let logs: [ProjectLog]
-    let projectColor: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            PanelTitle("Tracker", subtitle: "행동이 쌓이는 증거")
-            ActivityDots(blocks: blocks, color: projectColor)
-            Text("WorkBlocks \(blocks.count) · Logs \(logs.count)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .projectCard()
-    }
-}
-
-private struct ProjectIntelligencePanel: View {
-    let insights: [String]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            PanelTitle("Project Intelligence", subtitle: "프로젝트 분석 노트")
-            ForEach(insights, id: \.self) { insight in
-                Text(insight)
-                    .font(.subheadline)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-        }
-        .projectCard()
-    }
-}
-
-private struct PanelTitle: View {
-    let title: String
-    let subtitle: String
-
-    init(_ title: String, subtitle: String) {
-        self.title = title
-        self.subtitle = subtitle
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.headline)
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
-private struct PulseMetric: View {
-    let title: String
-    let value: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.headline)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-}
-
-private struct ActivityDots: View {
-    let blocks: [WorkBlock]
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 5) {
-            ForEach((0..<7), id: \.self) { offset in
-                Circle()
-                    .fill(hasActivity(offset: offset) ? color : Color(uiColor: .tertiarySystemFill))
-                    .frame(width: 9, height: 9)
-            }
-        }
-    }
-
-    private func hasActivity(offset: Int) -> Bool {
-        let date = Calendar.current.date(byAdding: .day, value: -offset, to: Date()) ?? Date()
-        return blocks.contains { Calendar.current.isDate($0.startAt, inSameDayAs: date) }
-    }
-}
-
-private struct EmptyPanelText: View {
-    let text: String
-    init(_ text: String) { self.text = text }
-
-    var body: some View {
-        Text(text)
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-    }
-}
-
-private extension View {
-    func projectCard(accent: Color? = nil) -> some View {
-        self
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(alignment: .leading) {
-                if let accent {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(accent)
-                        .frame(width: 4)
-                        .padding(.vertical, 14)
-                }
-            }
     }
 }
