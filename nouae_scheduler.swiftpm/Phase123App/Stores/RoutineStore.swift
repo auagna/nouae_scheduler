@@ -66,7 +66,7 @@ final class RoutineStore {
             return existing
         }
 
-        let startAt = date(on: day, minuteOfDay: routine.startMinuteOfDay)
+        let startAt = makeDate(on: day, minuteOfDay: routine.startMinuteOfDay)
         let endAt = Calendar.current.date(byAdding: .minute, value: routine.durationMinutes, to: startAt) ?? startAt
         let occurrence = RoutineOccurrence(
             routineId: routine.id,
@@ -162,7 +162,7 @@ final class RoutineStore {
         UserDefaults.standard.set(data, forKey: occurrencesKey)
     }
 
-    private func date(on day: Date, minuteOfDay: Int) -> Date {
+    private func makeDate(on day: Date, minuteOfDay: Int) -> Date {
         Calendar.current.date(byAdding: .minute, value: minuteOfDay, to: Calendar.current.startOfDay(for: day)) ?? day
     }
 }
