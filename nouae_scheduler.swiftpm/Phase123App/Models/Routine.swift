@@ -1,7 +1,6 @@
 import Foundation
-import SwiftData
 
-enum RoutineFrequency: String, CaseIterable, Identifiable {
+enum RoutineFrequency: String, CaseIterable, Identifiable, Codable {
     case daily
     case weekdays
     case weekly
@@ -19,7 +18,7 @@ enum RoutineFrequency: String, CaseIterable, Identifiable {
     }
 }
 
-enum RoutineOccurrenceState: String, CaseIterable, Identifiable {
+enum RoutineOccurrenceState: String, CaseIterable, Identifiable, Codable {
     case pending
     case placed
     case skipped
@@ -37,7 +36,7 @@ enum RoutineOccurrenceState: String, CaseIterable, Identifiable {
     }
 }
 
-enum RoutineWeekday: Int, CaseIterable, Identifiable {
+enum RoutineWeekday: Int, CaseIterable, Identifiable, Codable {
     case sunday = 1
     case monday = 2
     case tuesday = 3
@@ -73,58 +72,20 @@ enum RoutineWeekday: Int, CaseIterable, Identifiable {
     }
 }
 
-@Model
-final class Routine {
-    @Attribute(.unique) var id: UUID
+struct Routine: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
     var title: String
     var areaId: UUID?
     var projectId: UUID?
-    var frequencyRawValue: String
-    var weekdayMask: Int
-    var startMinuteOfDay: Int
-    var durationMinutes: Int
-    var notes: String
-    var isActive: Bool
-    var createdAt: Date
-    var updatedAt: Date
+    var frequency: RoutineFrequency = .daily
+    var weekdayMask: Int = RoutineWeekday.everyDayMask
+    var startMinuteOfDay: Int = 9 * 60
+    var durationMinutes: Int = 60
+    var notes: String = ""
+    var isActive: Bool = true
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
     var archivedAt: Date?
-
-    init(
-        id: UUID = UUID(),
-        title: String,
-        areaId: UUID? = nil,
-        projectId: UUID? = nil,
-        frequency: RoutineFrequency = .daily,
-        weekdayMask: Int = RoutineWeekday.everyDayMask,
-        startMinuteOfDay: Int = 9 * 60,
-        durationMinutes: Int = 60,
-        notes: String = "",
-        isActive: Bool = true,
-        createdAt: Date = Date(),
-        updatedAt: Date = Date(),
-        archivedAt: Date? = nil
-    ) {
-        self.id = id
-        self.title = title
-        self.areaId = areaId
-        self.projectId = projectId
-        frequencyRawValue = frequency.rawValue
-        self.weekdayMask = weekdayMask
-        self.startMinuteOfDay = startMinuteOfDay
-        self.durationMinutes = durationMinutes
-        self.notes = notes
-        self.isActive = isActive
-        self.createdAt = createdAt
-        self.updatedAt = updatedAt
-        self.archivedAt = archivedAt
-    }
-}
-
-extension Routine {
-    var frequency: RoutineFrequency {
-        get { RoutineFrequency(rawValue: frequencyRawValue) ?? .daily }
-        set { frequencyRawValue = newValue.rawValue }
-    }
 
     var isArchived: Bool {
         archivedAt != nil
@@ -137,9 +98,8 @@ extension Routine {
     }
 }
 
-@Model
-final class RoutineOccurrence {
-    @Attribute(.unique) var id: UUID
+struct RoutineOccurrence: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
     var routineId: UUID
     var areaId: UUID?
     var projectId: UUID?
@@ -148,42 +108,7 @@ final class RoutineOccurrence {
     var plannedStartAt: Date
     var plannedEndAt: Date
     var workBlockId: UUID?
-    var stateRawValue: String
-    var createdAt: Date
-    var updatedAt: Date
-
-    init(
-        id: UUID = UUID(),
-        routineId: UUID,
-        areaId: UUID? = nil,
-        projectId: UUID? = nil,
-        title: String,
-        occurrenceDate: Date,
-        plannedStartAt: Date,
-        plannedEndAt: Date,
-        workBlockId: UUID? = nil,
-        state: RoutineOccurrenceState = .pending,
-        createdAt: Date = Date(),
-        updatedAt: Date = Date()
-    ) {
-        self.id = id
-        self.routineId = routineId
-        self.areaId = areaId
-        self.projectId = projectId
-        self.title = title
-        self.occurrenceDate = occurrenceDate
-        self.plannedStartAt = plannedStartAt
-        self.plannedEndAt = plannedEndAt
-        self.workBlockId = workBlockId
-        stateRawValue = state.rawValue
-        self.createdAt = createdAt
-        self.updatedAt = updatedAt
-    }
-}
-
-extension RoutineOccurrence {
-    var state: RoutineOccurrenceState {
-        get { RoutineOccurrenceState(rawValue: stateRawValue) ?? .pending }
-        set { stateRawValue = newValue.rawValue }
-    }
+    var state: RoutineOccurrenceState = .pending
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
 }
