@@ -15,11 +15,13 @@ struct ModuleManagerView: View {
     @EnvironmentObject private var stores: AppStores
     @Query(sort: \ModuleInstance.order) private var instances: [ModuleInstance]
     @Query private var grants: [ModulePermissionGrant]
+    @Query private var draftRecords: [ModuleDraftRecord]
 
     @State private var tab: ModuleManagerTab = .installed
     @State private var importText = ""
     @State private var importPreview: ModuleManifest?
     @State private var message: String?
+    @State private var builderDraft: ModuleBuilderDraft?
 
     var body: some View {
         AppPanel(title: "Modules", subtitle: "Core를 대체하지 않는 보조 기능 슬롯입니다.") {
@@ -51,6 +53,10 @@ struct ModuleManagerView: View {
         }
         .task {
             try? stores.moduleRegistry.installBuiltInDefaults(context: context)
+        }
+        .sheet(item: $builderDraft) { draft in
+            ModuleBuilderView(draft: draft)
+                .environmentObject(stores)
         }
     }
 
@@ -100,12 +106,69 @@ struct ModuleManagerView: View {
     }
 
     private var createView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("User Module Builder")
-                .font(.subheadline.weight(.semibold))
-            Text("코드 없는 Field / View / Action 조합 Builder는 다음 단계에서 연결합니다.")
-                .font(.caption)
+        VStack(alignment: .leading, spacing: 14) {
+            AppSectionHeader(title: "User Module Builder", subtitle: "Swift나 JSON 없이 작은 운영 도구를 구성합니다.")
+
+            HStack(spacing: 8) {
+                Button {
+                    builderDraft = stores.moduleBuilderStore.newDraft(template: .blank)
+                } label: {
+                    Label("New Blank Module", systemImage: "plus.square")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    builderDraft = stores.moduleBuilderStore.newDraft(template: .metricCard)
+                } label: {
+                    Label("Metric Card", systemImage: "chart.bar")
+                }
+                .buttonStyle(.bordered)
+            }
+
+            AppDivider()
+
+            Text("Templates")
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+
+            ForEach(ModuleTemplateCatalog.templates) { template in
+                Button {
+                    builderDraft = stores.moduleBuilderStore.newDraft(template: template)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: templateIcon(template))
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(template.title)
+                                .font(.subheadline.weight(.semibold))
+                            Text(templateDescription(template))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                AppDivider()
+            }
+
+            Text("Drafts")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
+
+            if activeDraftRecords.isEmpty {
+                Text("새 Module을 만들어 nou ae를 자신의 흐름에 맞게 조정해보세요.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(activeDraftRecords) { record in
+                    draftRow(record)
+                }
+            }
         }
     }
 
@@ -146,6 +209,10 @@ struct ModuleManagerView: View {
         Set(activeInstances.map(\.moduleIdentifier))
     }
 
+    private var activeDraftRecords: [ModuleDraftRecord] {
+        draftRecords.filter { $0.archivedAt == nil }.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
     private func moduleInstanceRow(_ instance: ModuleInstance) -> some View {
         let manifest = stores.moduleRegistry.module(for: instance.moduleIdentifier)
         return VStack(alignment: .leading, spacing: 8) {
@@ -178,6 +245,20 @@ struct ModuleManagerView: View {
             }
 
             HStack {
+                if let manifest, manifest.origin == .user {
+                    Button("Edit") {
+                        builderDraft = draftFromInstalledModule(manifest: manifest, instance: instance)
+                    }
+                    .buttonStyle(.bordered)
+                    .font(.caption)
+
+                    Button("Duplicate") {
+                        duplicateInstalledModule(manifest: manifest, instance: instance)
+                    }
+                    .buttonStyle(.bordered)
+                    .font(.caption)
+                }
+
                 Button("Archive", role: .destructive) {
                     archive(instance)
                 }
@@ -201,6 +282,128 @@ struct ModuleManagerView: View {
             importText = ""
         } catch {
             message = error.localizedDescription
+        }
+    }
+
+    private func draftRow(_ record: ModuleDraftRecord) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: record.draft?.iconSystemName ?? "square.grid.2x2")
+                .frame(width: 26)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(record.name)
+                    .font(.subheadline.weight(.semibold))
+                Text(record.draft?.placement.title ?? "Draft")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(record.updatedAt.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Menu {
+                Button("Open") {
+                    if let draft = record.draft {
+                        builderDraft = draft
+                    }
+                }
+                Button("Duplicate") {
+                    duplicate(record)
+                }
+                Button("Archive", role: .destructive) {
+                    archiveDraft(record)
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+        }
+        .padding(10)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func duplicate(_ record: ModuleDraftRecord) {
+        guard let draft = record.draft else {
+            message = "Draft를 읽을 수 없습니다."
+            return
+        }
+        do {
+            let copy = stores.moduleBuilderStore.duplicateDraft(draft)
+            try stores.moduleBuilderStore.saveDraft(copy)
+            builderDraft = copy
+            message = "Draft를 복제했습니다."
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+
+    private func archiveDraft(_ record: ModuleDraftRecord) {
+        do {
+            try stores.moduleBuilderStore.archiveDraft(record)
+            message = "Draft를 archive했습니다."
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+
+    private func draftFromInstalledModule(manifest: ModuleManifest, instance: ModuleInstance) -> ModuleBuilderDraft {
+        let configuration = instance.configurationData.flatMap { try? JSONDecoder().decode(DeclarativeModuleConfiguration.self, from: $0) }
+        var draft = ModuleBuilderDraft(
+            moduleIdentifier: manifest.id,
+            name: manifest.name,
+            descriptionText: manifest.descriptionText,
+            category: ModuleCategory(rawValue: manifest.categoryRawValue) ?? .utility,
+            iconSystemName: manifest.iconSystemName,
+            placement: instance.placement,
+            template: .blank,
+            componentDefinitions: configuration?.components ?? [],
+            dataBindings: [],
+            actionDefinitions: [],
+            requestedCapabilities: manifest.capabilities,
+            version: manifest.version,
+            createdAt: manifest.createdAt,
+            updatedAt: Date(),
+            lastValidatedAt: nil
+        )
+        if draft.componentDefinitions.isEmpty {
+            draft.componentDefinitions = [ModuleComponentDefinition(type: .text, title: manifest.name, value: manifest.descriptionText, order: 0)]
+        }
+        return draft
+    }
+
+    private func duplicateInstalledModule(manifest: ModuleManifest, instance: ModuleInstance) {
+        do {
+            let draft = draftFromInstalledModule(manifest: manifest, instance: instance)
+            let copy = stores.moduleBuilderStore.duplicateDraft(draft)
+            try stores.moduleBuilderStore.saveDraft(copy)
+            builderDraft = copy
+            message = "설치된 Module을 Draft로 복제했습니다."
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+
+    private func templateIcon(_ template: ModuleBuilderTemplate) -> String {
+        switch template {
+        case .blank: return "square.grid.2x2"
+        case .metricCard: return "chart.bar"
+        case .listCard: return "list.bullet"
+        case .progressCard: return "gauge.with.dots.needle.50percent"
+        case .quickAction: return "bolt"
+        case .logPreset: return "square.and.pencil"
+        case .routineTemplate: return "repeat.circle"
+        case .projectSummary: return "folder.badge.gearshape"
+        }
+    }
+
+    private func templateDescription(_ template: ModuleBuilderTemplate) -> String {
+        switch template {
+        case .blank: return "빈 구조에서 직접 구성합니다."
+        case .metricCard: return "Dashboard나 Tracker에 숫자 지표를 표시합니다."
+        case .listCard: return "현재 context의 짧은 목록을 표시합니다."
+        case .progressCard: return "완료율과 진행 상태를 보여줍니다."
+        case .quickAction: return "자주 쓰는 행동을 가까이에 둡니다."
+        case .logPreset: return "짧은 회고 입력을 시작합니다."
+        case .routineTemplate: return "Routine 생성 흐름을 가까이에 둡니다."
+        case .projectSummary: return "Project Dashboard에 요약 카드를 둡니다."
         }
     }
 

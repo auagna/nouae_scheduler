@@ -271,16 +271,41 @@ struct ModuleComponentDefinition: Identifiable, Codable, Equatable {
     var id: UUID
     var typeRawValue: String
     var title: String
+    var subtitle: String?
     var value: String
+    var dataBindingId: UUID?
+    var actionId: UUID?
     var actionRawValue: String?
+    var styleRawValue: String?
+    var order: Int?
+    var configurationData: Data?
     var children: [ModuleComponentDefinition]
 
-    init(id: UUID = UUID(), type: ModuleComponentType, title: String = "", value: String = "", action: ModuleDeclarativeActionType? = nil, children: [ModuleComponentDefinition] = []) {
+    init(
+        id: UUID = UUID(),
+        type: ModuleComponentType,
+        title: String = "",
+        subtitle: String? = nil,
+        value: String = "",
+        dataBindingId: UUID? = nil,
+        actionId: UUID? = nil,
+        action: ModuleDeclarativeActionType? = nil,
+        styleRawValue: String? = nil,
+        order: Int? = nil,
+        configurationData: Data? = nil,
+        children: [ModuleComponentDefinition] = []
+    ) {
         self.id = id
         typeRawValue = type.rawValue
         self.title = title
+        self.subtitle = subtitle
         self.value = value
+        self.dataBindingId = dataBindingId
+        self.actionId = actionId
         actionRawValue = action?.rawValue
+        self.styleRawValue = styleRawValue
+        self.order = order
+        self.configurationData = configurationData
         self.children = children
     }
 }
@@ -292,6 +317,10 @@ extension ModuleComponentDefinition {
 
 struct DeclarativeModuleConfiguration: Codable, Equatable {
     var components: [ModuleComponentDefinition]
+
+    init(components: [ModuleComponentDefinition] = []) {
+        self.components = components
+    }
 }
 
 enum ModuleActionType: String, CaseIterable, Identifiable, Codable {

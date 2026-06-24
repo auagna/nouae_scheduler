@@ -14,9 +14,11 @@ final class AppStores: ObservableObject {
     let adjustmentStore: NextAdjustmentStore
     let dashboardStore: DashboardStore
     let moduleRegistry: ModuleRegistry
+    let moduleBuilderStore: ModuleBuilderStore
 
     init(context: ModelContext) {
         moduleRegistry = ModuleRegistry()
+        moduleBuilderStore = ModuleBuilderStore(context: context)
         projectAreaStore = ProjectAreaStore(context: context)
         routineStore = RoutineStore(context: context)
         projectStore = ProjectStore(context: context)

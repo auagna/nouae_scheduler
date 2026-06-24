@@ -14,7 +14,8 @@ enum AppModelContainer {
             ProjectMemoSection.self,
             NextAdjustment.self,
             ModuleInstance.self,
-            ModulePermissionGrant.self
+            ModulePermissionGrant.self,
+            ModuleDraftRecord.self
         ])
     }
 
