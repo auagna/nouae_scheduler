@@ -9,9 +9,15 @@ struct RoutineMaterializationResult {
 @MainActor
 final class RoutineStore {
     private let context: ModelContext
+    private let routinesKey = "nouae.routines.v1"
+    private let occurrencesKey = "nouae.routineOccurrences.v1"
 
     init(context: ModelContext) {
         self.context = context
+    }
+
+    var routines: [Routine] {
+        loadRoutines()
     }
 
     @discardableResult
@@ -28,31 +34,33 @@ final class RoutineStore {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { throw SyncError.invalidTitle }
 
-        let routine = Routine(
-            title: trimmedTitle,
-            areaId: areaId,
-            projectId: projectId,
-            frequency: frequency,
-            weekdayMask: weekdayMask,
-            startMinuteOfDay: max(0, min(startMinuteOfDay, 23 * 60 + 50)),
-            durationMinutes: max(10, durationMinutes),
-            notes: notes
-        )
-        context.insert(routine)
-        try context.save()
+        var routine = Routine(title: trimmedTitle)
+        routine.areaId = areaId
+        routine.projectId = projectId
+        routine.frequency = frequency
+        routine.weekdayMask = weekdayMask
+        routine.startMinuteOfDay = max(0, min(startMinuteOfDay, 23 * 60 + 50))
+        routine.durationMinutes = max(10, durationMinutes)
+        routine.notes = notes
+
+        var values = loadRoutines()
+        values.insert(routine, at: 0)
+        saveRoutines(values)
         return routine
     }
 
-    func activeRoutines(on date: Date) throws -> [Routine] {
-        try context.fetch(FetchDescriptor<Routine>())
+    func activeRoutines(on date: Date) -> [Routine] {
+        loadRoutines()
             .filter { $0.occurs(on: date) }
             .sorted { $0.startMinuteOfDay < $1.startMinuteOfDay }
     }
 
     @discardableResult
-    func ensureOccurrence(for routine: Routine, on date: Date) throws -> RoutineOccurrence {
+    func ensureOccurrence(for routine: Routine, on date: Date) -> RoutineOccurrence {
         let day = Calendar.current.startOfDay(for: date)
-        if let existing = try context.fetch(FetchDescriptor<RoutineOccurrence>()).first(where: {
+        var occurrences = loadOccurrences()
+
+        if let existing = occurrences.first(where: {
             $0.routineId == routine.id && Calendar.current.isDate($0.occurrenceDate, inSameDayAs: day)
         }) {
             return existing
@@ -69,14 +77,14 @@ final class RoutineStore {
             plannedStartAt: startAt,
             plannedEndAt: endAt
         )
-        context.insert(occurrence)
-        try context.save()
+        occurrences.insert(occurrence, at: 0)
+        saveOccurrences(occurrences)
         return occurrence
     }
 
     @discardableResult
     func materializeRoutine(_ routine: Routine, on date: Date) throws -> RoutineMaterializationResult {
-        let occurrence = try ensureOccurrence(for: routine, on: date)
+        var occurrence = ensureOccurrence(for: routine, on: date)
 
         if let workBlockId = occurrence.workBlockId,
            let existing = try context.fetch(FetchDescriptor<WorkBlock>()).first(where: { $0.id == workBlockId }) {
@@ -93,30 +101,65 @@ final class RoutineStore {
         block.calendarIdentifier = project?.calendarIdentifier
         block.syncState = .pending
         context.insert(block)
+        try context.save()
+
         occurrence.projectId = routine.projectId
         occurrence.workBlockId = block.id
         occurrence.state = .placed
         occurrence.updatedAt = Date()
-        try context.save()
+        upsertOccurrence(occurrence)
         return RoutineMaterializationResult(occurrence: occurrence, block: block)
     }
 
-    func skipOccurrence(_ occurrence: RoutineOccurrence) throws {
-        occurrence.state = .skipped
-        occurrence.updatedAt = Date()
-        try context.save()
+    func skipOccurrence(_ occurrence: RoutineOccurrence) {
+        var value = occurrence
+        value.state = .skipped
+        value.updatedAt = Date()
+        upsertOccurrence(value)
     }
 
-    func archiveRoutine(_ routine: Routine) throws {
-        routine.archivedAt = Date()
-        routine.isActive = false
-        routine.updatedAt = Date()
-        try context.save()
+    func archiveRoutine(_ routine: Routine) {
+        var values = loadRoutines()
+        guard let index = values.firstIndex(where: { $0.id == routine.id }) else { return }
+        values[index].archivedAt = Date()
+        values[index].isActive = false
+        values[index].updatedAt = Date()
+        saveRoutines(values)
     }
 
     private func findProject(id: UUID?) throws -> Project? {
         guard let id else { return nil }
         return try context.fetch(FetchDescriptor<Project>()).first { $0.id == id }
+    }
+
+    private func upsertOccurrence(_ occurrence: RoutineOccurrence) {
+        var values = loadOccurrences()
+        if let index = values.firstIndex(where: { $0.id == occurrence.id }) {
+            values[index] = occurrence
+        } else {
+            values.insert(occurrence, at: 0)
+        }
+        saveOccurrences(values)
+    }
+
+    private func loadRoutines() -> [Routine] {
+        guard let data = UserDefaults.standard.data(forKey: routinesKey) else { return [] }
+        return (try? JSONDecoder().decode([Routine].self, from: data)) ?? []
+    }
+
+    private func saveRoutines(_ routines: [Routine]) {
+        guard let data = try? JSONEncoder().encode(routines) else { return }
+        UserDefaults.standard.set(data, forKey: routinesKey)
+    }
+
+    private func loadOccurrences() -> [RoutineOccurrence] {
+        guard let data = UserDefaults.standard.data(forKey: occurrencesKey) else { return [] }
+        return (try? JSONDecoder().decode([RoutineOccurrence].self, from: data)) ?? []
+    }
+
+    private func saveOccurrences(_ occurrences: [RoutineOccurrence]) {
+        guard let data = try? JSONEncoder().encode(occurrences) else { return }
+        UserDefaults.standard.set(data, forKey: occurrencesKey)
     }
 
     private func date(on day: Date, minuteOfDay: Int) -> Date {
