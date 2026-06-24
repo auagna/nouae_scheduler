@@ -4,6 +4,8 @@ enum AppModelContainer {
     static var schema: Schema {
         Schema([
             AppSyncSettings.self,
+            Routine.self,
+            RoutineOccurrence.self,
             ProjectArea.self,
             Project.self,
             RawTask.self,
