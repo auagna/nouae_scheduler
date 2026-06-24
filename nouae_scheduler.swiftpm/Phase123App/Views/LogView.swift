@@ -41,6 +41,7 @@ struct LogView: View {
                 }
 
                 quickLogPanel
+                ModuleHostView(placement: .logPreset, projectId: projectId, layoutStyle: .compact)
                 reflectionSummaryPanel
                 todayLogsPanel
                 projectLogsPanel

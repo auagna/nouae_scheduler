@@ -126,6 +126,8 @@ struct PlanView: View {
                 onGenerate: materializeRoutine
             )
 
+            ModuleHostView(placement: .planQuickAction, projectId: selectedProjectId, layoutStyle: .compact)
+
             List(inboxTasks) { task in
                 RawTaskRow(task: task) { placementTask = task }
                     .draggable(task.id.uuidString)

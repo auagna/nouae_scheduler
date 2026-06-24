@@ -88,6 +88,7 @@ struct ProjectDashboardView: View {
                             ProjectMVPRecentReflectionPanel(logs: recentProjectLogs, onWriteLog: openProjectLog)
                             ProjectMVPCompactTrackerPanel(summary: trackerSummary, accentColor: areaColor)
                             ProjectMVPAttentionPanel(items: attentionItems, compactInsight: compactInsight)
+                            ModuleHostView(placement: .projectDashboardContext, projectId: project.id, layoutStyle: .compact)
                         }
                         .frame(width: max(320, geometry.size.width * 0.34), alignment: .topLeading)
                     }
@@ -130,6 +131,7 @@ struct ProjectDashboardView: View {
                         ProjectMVPRecentReflectionPanel(logs: recentProjectLogs, onWriteLog: openProjectLog)
                         ProjectMVPCompactTrackerPanel(summary: trackerSummary, accentColor: areaColor)
                         ProjectMVPAttentionPanel(items: attentionItems, compactInsight: compactInsight)
+                        ModuleHostView(placement: .projectDashboardContext, projectId: project.id, layoutStyle: .compact)
                     }
                 }
             }

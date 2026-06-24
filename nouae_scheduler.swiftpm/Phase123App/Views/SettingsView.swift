@@ -69,6 +69,10 @@ struct SettingsView: View {
 
                 PlanSettingsSection()
 
+                ModuleManagerView()
+
+                ModuleHostView(placement: .settingsSection, layoutStyle: .compact)
+
                 DataSettingsSection(
                     onExport: { message = "Export는 다음 단계에서 파일 생성 흐름으로 연결합니다." },
                     onRemoveSamples: { showingSampleRemoval = true }

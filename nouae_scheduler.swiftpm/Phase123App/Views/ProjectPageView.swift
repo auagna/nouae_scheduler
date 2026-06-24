@@ -50,6 +50,8 @@ struct ProjectPageView: View {
                     .foregroundStyle(.secondary)
             }
 
+            ModuleHostView(placement: .projectPageBlock, projectId: project.id, layoutStyle: .regular)
+
             content
         }
         .navigationTitle("Project Page")

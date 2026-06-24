@@ -89,6 +89,7 @@ struct DashboardView: View {
                 attentionPanel
                 nextAdjustmentPanel
                 trackerPanel
+                ModuleHostView(placement: .dashboardCompact, layoutStyle: .compact)
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
@@ -103,6 +104,7 @@ struct DashboardView: View {
             attentionPanel
             nextAdjustmentPanel
             trackerPanel
+            ModuleHostView(placement: .dashboardCompact, layoutStyle: .compact)
         }
     }
 
