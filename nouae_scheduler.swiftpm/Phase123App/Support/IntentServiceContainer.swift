@@ -89,7 +89,9 @@ final class IntentServiceContainer {
         return try requireContext().fetch(FetchDescriptor<RawTask>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)]))
             .filter { !$0.isConvertedToBlock }
             .prefix(20)
-            .map { TaskEntitySnapshot(task: $0, project: projects.first { $0.id == $0.projectId }) }
+            .map { task in
+                TaskEntitySnapshot(task: task, project: projects.first { $0.id == task.projectId })
+            }
     }
 
     func routineEntities() throws -> [RoutineEntitySnapshot] {
@@ -106,7 +108,9 @@ final class IntentServiceContainer {
         return try requireContext().fetch(FetchDescriptor<WorkBlock>(sortBy: [SortDescriptor(\.startAt)]))
             .filter { $0.endAt >= start && $0.startAt <= end && $0.executionState != .stopped }
             .prefix(20)
-            .map { WorkBlockEntitySnapshot(block: $0, project: projects.first { $0.id == $0.projectId }) }
+            .map { block in
+                WorkBlockEntitySnapshot(block: block, project: projects.first { $0.id == block.projectId })
+            }
     }
 
     func moduleEntities() throws -> [ShortcutModuleSnapshot] {
