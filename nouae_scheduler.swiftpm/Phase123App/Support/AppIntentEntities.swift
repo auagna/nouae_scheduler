@@ -1,4 +1,4 @@
-#if canImport(AppIntents)
+#if NOUAE_ENABLE_APP_INTENTS && canImport(AppIntents)
 import AppIntents
 import Foundation
 
