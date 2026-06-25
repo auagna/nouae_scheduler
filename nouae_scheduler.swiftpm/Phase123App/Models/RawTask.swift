@@ -3,14 +3,14 @@ import SwiftData
 
 @Model
 final class RawTask {
-    @Attribute(.unique) var id: UUID
-    var title: String
+    @Attribute(.unique) var id: UUID = UUID()
+    var title: String = ""
     var projectId: UUID?
     var reminderIdentifier: String?
-    var createdAt: Date
+    var createdAt: Date = Date()
     var scheduledAt: Date?
-    var isConvertedToBlock: Bool
-    var syncStateRawValue: String
+    var isConvertedToBlock: Bool = false
+    var syncStateRawValue: String = SyncState.local.rawValue
 
     init(
         id: UUID = UUID(),
