@@ -36,13 +36,13 @@ struct ShortcutsAutomationSection: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-#if canImport(AppIntents)
+#if NOUAE_ENABLE_APP_INTENTS && canImport(AppIntents)
                 Text("Shortcuts 앱에서 nou ae Core Actions를 검색할 수 있습니다. 실제 Siri/Shortcuts 노출은 iPad 실기기에서 확인이 필요합니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
 #else
-                Text("현재 Swift Playgrounds SDK에서 AppIntents를 사용할 수 없으면 Core 앱만 실행되고 Shortcuts 노출은 비활성화됩니다.")
+                Text("Swift Playgrounds 빌드에서는 앱 본체 안정성을 위해 App Intents 컴파일을 비활성화했습니다. TestFlight/Xcode 빌드에서 NOUAE_ENABLE_APP_INTENTS를 켜면 Shortcuts 노출을 다시 활성화할 수 있습니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
