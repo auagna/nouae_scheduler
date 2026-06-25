@@ -70,7 +70,7 @@ struct SettingsView: View {
 
                 PlanSettingsSection()
 
-                ShortcutsAutomationSection(moduleCount: shortcutEligibleModuleCount) {
+                ShortcutsAutomationSection(moduleCount: shortcutCandidateModuleCount) {
                     refreshShortcutParameters()
                 }
 
@@ -99,11 +99,9 @@ struct SettingsView: View {
     private var failedBlocks: [WorkBlock] { blocks.filter { $0.syncState == .failed } }
     private var failedTasks: [RawTask] { tasks.filter { $0.syncState == .failed } }
     private var failedProjects: [Project] { projects.filter { $0.syncState == .failed } }
-    private var shortcutEligibleModuleCount: Int {
+    private var shortcutCandidateModuleCount: Int {
         moduleInstances.filter { instance in
-            instance.archivedAt == nil &&
-            instance.isEnabled &&
-            (stores.moduleRegistry.module(for: instance.moduleIdentifier)?.isShortcutEligible ?? false)
+            instance.archivedAt == nil && instance.isEnabled
         }.count
     }
 
@@ -168,7 +166,7 @@ struct SettingsView: View {
     }
 
     private func refreshShortcutParameters() {
-        message = "Shortcuts parameter source를 갱신했습니다. Shortcuts 앱의 실제 노출은 iPad에서 확인해 주세요."
+        message = "Swift Playgrounds 빌드에서는 Shortcuts 노출을 비활성화했습니다. Core 앱 기능은 그대로 사용할 수 있습니다."
     }
 
     private func run(_ operation: @escaping () async throws -> Void) async {
