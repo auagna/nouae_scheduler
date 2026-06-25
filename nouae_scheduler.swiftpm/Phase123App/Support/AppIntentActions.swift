@@ -1,4 +1,4 @@
-#if canImport(AppIntents)
+#if NOUAE_ENABLE_APP_INTENTS && canImport(AppIntents)
 import AppIntents
 import Foundation
 import SwiftData
@@ -207,7 +207,7 @@ struct OpenLogIntent: AppIntent {
     var project: ProjectEntity?
 
     @Parameter(title: "Quick Log Mode")
-    var quickLogMode: Bool
+    var quickLogMode: Bool = false
 
     func perform() async throws -> some IntentResult {
         await MainActor.run {
