@@ -6,16 +6,17 @@ struct ShortcutsAutomationSection: View {
     let onRefresh: () -> Void
 
     var body: some View {
-        AppPanel {
-            AppSectionHeader(
-                title: "Shortcuts & Automation",
-                subtitle: "Siri, Shortcuts, and safe Module Actions"
-            ) {
-                Button("Refresh", action: onRefresh)
-                    .font(.caption.weight(.semibold))
-            }
-
+        AppPanel(
+            title: "Shortcuts & Automation",
+            subtitle: "Siri, Shortcuts, and safe Module Actions"
+        ) {
             VStack(spacing: 10) {
+                HStack {
+                    Spacer()
+                    Button("Refresh", action: onRefresh)
+                        .font(.caption.weight(.semibold))
+                }
+
                 shortcutRow(symbol: "plus.circle", title: "Capture RawTask", subtitle: "빠르게 Inbox에 작업을 추가합니다.")
                 shortcutRow(symbol: "arrow.right.circle", title: "Show Next Action", subtitle: "현재 다음 행동을 확인합니다.")
                 shortcutRow(symbol: "repeat.circle", title: "Start Routine", subtitle: "Routine Occurrence와 WorkBlock을 시작합니다.")
