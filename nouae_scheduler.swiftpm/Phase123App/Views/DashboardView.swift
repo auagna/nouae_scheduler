@@ -18,7 +18,6 @@ struct DashboardView: View {
     @State private var selectedQueue: DashboardQueueKind = .next
     @State private var message: String?
     @State private var showingSettings = false
-    @State private var showingPromptExport = false
     @State private var logBlock: WorkBlock?
 
     var body: some View {
@@ -53,21 +52,8 @@ struct DashboardView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingPromptExport = true
-                    } label: {
-                        Image(systemName: "doc.on.clipboard")
-                    }
-                    .accessibilityLabel("Prompt Export")
-                }
-            }
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
-            }
-            .sheet(isPresented: $showingPromptExport) {
-                PromptExportView(initialType: .weeklyReview)
             }
             .sheet(item: $logBlock) { block in
                 LogEditorSheet(initialProjectId: block.projectId, initialWorkBlockId: block.id)
@@ -89,7 +75,6 @@ struct DashboardView: View {
                 attentionPanel
                 nextAdjustmentPanel
                 trackerPanel
-                ModuleHostView(placement: .dashboardCompact, layoutStyle: .compact)
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
@@ -104,7 +89,6 @@ struct DashboardView: View {
             attentionPanel
             nextAdjustmentPanel
             trackerPanel
-            ModuleHostView(placement: .dashboardCompact, layoutStyle: .compact)
         }
     }
 
