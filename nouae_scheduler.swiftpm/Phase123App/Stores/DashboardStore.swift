@@ -1,45 +1,68 @@
 import Foundation
 import SwiftData
 
-struct DashboardSnapshot {
-    let planned: Int
-    let inProgress: Int
-    let completed: Int
-    let delayedToday: Int
-    let stoppedToday: Int
-    let activeProjects: [Project]
-    let todayBlocks: [WorkBlock]
-    let delayedBlocks: [WorkBlock]
-    let recentAdjustments: [NextAdjustment]
-    let recentLogs: [ProjectLog]
-
-    var closingSummary: String {
-        "오늘 WorkBlock \(todayBlocks.count)개 중 \(completed)개를 완료했습니다. 진행 중 \(inProgress)개, 예정 \(planned)개, 미룸 \(delayedToday)개, 중단 \(stoppedToday)개입니다."
-    }
+struct DashboardSummary {
+    var planned: Int
+    var inProgress: Int
+    var completed: Int
+    var delayed: Int
+    var failedSync: Int
 }
 
 @MainActor
 final class DashboardStore {
     private let context: ModelContext
-    init(context: ModelContext) { self.context = context }
 
-    func projectCount() throws -> Int {
-        try context.fetch(FetchDescriptor<Project>()).filter { $0.status != .archived }.count
+    init(context: ModelContext) {
+        self.context = context
     }
 
-    func snapshot(projects: [Project], blocks: [WorkBlock], logs: [ProjectLog], adjustments: [NextAdjustment]) -> DashboardSnapshot {
-        let todayBlocks = blocks.filter { Calendar.current.isDateInToday($0.startAt) }
-        return DashboardSnapshot(
-            planned: todayBlocks.filter { $0.executionState == .planned }.count,
-            inProgress: todayBlocks.filter { $0.executionState == .inProgress }.count,
-            completed: todayBlocks.filter { $0.executionState == .completed }.count,
-            delayedToday: todayBlocks.filter { $0.executionState == .delayed }.count,
-            stoppedToday: todayBlocks.filter { $0.executionState == .stopped }.count,
-            activeProjects: projects.filter { $0.status == .active },
-            todayBlocks: todayBlocks.sorted { $0.startAt < $1.startAt },
-            delayedBlocks: blocks.filter { $0.executionState == .delayed }.sorted { $0.updatedAt > $1.updatedAt },
-            recentAdjustments: Array(adjustments.filter { $0.isActive }.sorted { $0.createdAt > $1.createdAt }.prefix(4)),
-            recentLogs: Array(logs.sorted { $0.createdAt > $1.createdAt }.prefix(4))
+    func todaySummary() throws -> DashboardSummary {
+        let blocks = try context.fetch(FetchDescriptor<WorkBlock>())
+            .filter { Calendar.current.isDate($0.startAt, inSameDayAs: Date()) }
+        let tasks = try context.fetch(FetchDescriptor<RawTask>())
+        return DashboardSummary(
+            planned: blocks.filter { $0.executionState == .planned }.count,
+            inProgress: blocks.filter { $0.executionState == .inProgress }.count,
+            completed: blocks.filter { $0.executionState == .completed }.count,
+            delayed: blocks.filter { $0.executionState == .delayed }.count,
+            failedSync: blocks.filter { $0.syncState == .failed }.count + tasks.filter { $0.syncState == .failed }.count
         )
+    }
+
+    func nextAction() throws -> WorkBlock? {
+        let now = Date()
+        return try context.fetch(FetchDescriptor<WorkBlock>(sortBy: [SortDescriptor(\.startAt)]))
+            .filter { $0.executionState == .planned && $0.endAt >= now }
+            .first
+    }
+
+    func activeProjects() throws -> [Project] {
+        try context.fetch(FetchDescriptor<Project>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]))
+            .filter { $0.status == .active && $0.archivedAt == nil }
+    }
+}
+
+@MainActor
+final class NextAdjustmentStore {
+    private let context: ModelContext
+
+    init(context: ModelContext) {
+        self.context = context
+    }
+
+    @discardableResult
+    func createAdjustment(projectId: UUID?, content: String) throws -> NextAdjustment {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw SyncError.invalidTitle }
+        if let projectId {
+            for item in try context.fetch(FetchDescriptor<NextAdjustment>()).filter({ $0.projectId == projectId }) {
+                item.isActive = false
+            }
+        }
+        let adjustment = NextAdjustment(projectId: projectId, content: trimmed)
+        context.insert(adjustment)
+        try context.save()
+        return adjustment
     }
 }

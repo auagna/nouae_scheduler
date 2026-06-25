@@ -12,7 +12,16 @@ final class RawTask {
     var isConvertedToBlock: Bool
     var syncStateRawValue: String
 
-    init(id: UUID = UUID(), title: String, projectId: UUID? = nil, reminderIdentifier: String? = nil, createdAt: Date = Date(), scheduledAt: Date? = nil, isConvertedToBlock: Bool = false, syncState: SyncState = .local) {
+    init(
+        id: UUID = UUID(),
+        title: String,
+        projectId: UUID? = nil,
+        reminderIdentifier: String? = nil,
+        createdAt: Date = Date(),
+        scheduledAt: Date? = nil,
+        isConvertedToBlock: Bool = false,
+        syncState: SyncState = .local
+    ) {
         self.id = id
         self.title = title
         self.projectId = projectId
@@ -25,5 +34,8 @@ final class RawTask {
 }
 
 extension RawTask {
-    var syncState: SyncState { get { SyncState(rawValue: syncStateRawValue) ?? .local } set { syncStateRawValue = newValue.rawValue } }
+    var syncState: SyncState {
+        get { SyncState(rawValue: syncStateRawValue) ?? .local }
+        set { syncStateRawValue = newValue.rawValue }
+    }
 }

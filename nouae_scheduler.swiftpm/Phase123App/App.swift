@@ -8,6 +8,7 @@ struct NouAEApp: App {
     private let launchWarning: String?
     @StateObject private var stores: AppStores
     @StateObject private var services: AppServices
+    @StateObject private var navigationRouter = AppNavigationRouter.shared
 
     init() {
         let resolvedContainer: ModelContainer
@@ -26,10 +27,12 @@ struct NouAEApp: App {
         }
 
         let stores = AppStores(context: resolvedContainer.mainContext)
+        let services = AppServices(context: resolvedContainer.mainContext, stores: stores)
         self.container = resolvedContainer
         self.launchWarning = warning
         _stores = StateObject(wrappedValue: stores)
-        _services = StateObject(wrappedValue: AppServices(context: resolvedContainer.mainContext, stores: stores))
+        _services = StateObject(wrappedValue: services)
+        IntentServiceContainer.shared.configure(container: resolvedContainer, stores: stores, services: services)
     }
 
     var body: some Scene {
@@ -37,6 +40,7 @@ struct NouAEApp: App {
             ContentView()
                 .environmentObject(stores)
                 .environmentObject(services)
+                .environmentObject(navigationRouter)
                 .safeAreaInset(edge: .top) {
                     if let launchWarning {
                         Text(launchWarning)

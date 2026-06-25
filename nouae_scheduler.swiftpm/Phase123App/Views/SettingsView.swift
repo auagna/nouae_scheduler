@@ -13,6 +13,7 @@ struct SettingsView: View {
     @Query(sort: \Project.updatedAt, order: .reverse) private var projects: [Project]
     @Query(sort: \RawTask.createdAt, order: .reverse) private var tasks: [RawTask]
     @Query(sort: \WorkBlock.updatedAt, order: .reverse) private var blocks: [WorkBlock]
+    @Query(sort: \ModuleInstance.updatedAt, order: .reverse) private var moduleInstances: [ModuleInstance]
 
     @State private var isWorking = false
     @State private var message: String?
@@ -69,6 +70,10 @@ struct SettingsView: View {
 
                 PlanSettingsSection()
 
+                ShortcutsAutomationSection(moduleCount: shortcutEligibleModuleCount) {
+                    refreshShortcutParameters()
+                }
+
                 ModuleManagerView()
 
                 ModuleHostView(placement: .settingsSection, layoutStyle: .compact)
@@ -94,6 +99,13 @@ struct SettingsView: View {
     private var failedBlocks: [WorkBlock] { blocks.filter { $0.syncState == .failed } }
     private var failedTasks: [RawTask] { tasks.filter { $0.syncState == .failed } }
     private var failedProjects: [Project] { projects.filter { $0.syncState == .failed } }
+    private var shortcutEligibleModuleCount: Int {
+        moduleInstances.filter { instance in
+            instance.archivedAt == nil &&
+            instance.isEnabled &&
+            (stores.moduleRegistry.module(for: instance.moduleIdentifier)?.isShortcutEligible ?? false)
+        }.count
+    }
 
     private func requestCalendarPermission() async {
         await run {
@@ -153,6 +165,10 @@ struct SettingsView: View {
     private func openSystemSettings() {
         guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
         UIApplication.shared.open(url)
+    }
+
+    private func refreshShortcutParameters() {
+        message = "Shortcuts parameter source를 갱신했습니다. Shortcuts 앱의 실제 노출은 iPad에서 확인해 주세요."
     }
 
     private func run(_ operation: @escaping () async throws -> Void) async {

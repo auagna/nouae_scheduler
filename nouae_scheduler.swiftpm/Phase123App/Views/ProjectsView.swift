@@ -9,6 +9,7 @@ private enum ProjectsViewMode: String, CaseIterable, Identifiable {
 }
 
 struct ProjectsView: View {
+    @EnvironmentObject private var navigationRouter: AppNavigationRouter
     @EnvironmentObject private var stores: AppStores
     @EnvironmentObject private var services: AppServices
     @Query(sort: \Project.updatedAt, order: .reverse) private var projects: [Project]
@@ -18,9 +19,10 @@ struct ProjectsView: View {
     @State private var showingAdd = false
     @State private var message: String?
     @State private var viewMode: ProjectsViewMode = .list
+    @State private var navigationPath: [UUID] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             VStack(spacing: 0) {
                 Picker("Projects View", selection: $viewMode) {
                     ForEach(ProjectsViewMode.allCases) { mode in
@@ -37,6 +39,13 @@ struct ProjectsView: View {
                 }
             }
             .navigationTitle("Projects")
+            .navigationDestination(for: UUID.self) { projectId in
+                if let project = projects.first(where: { $0.id == projectId }) {
+                    ProjectDashboardView(project: project)
+                } else {
+                    ContentUnavailableView("Project를 찾을 수 없습니다.", systemImage: "folder.badge.questionmark")
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { refresh() } label: { Image(systemName: "arrow.triangle.2.circlepath") }
@@ -48,6 +57,14 @@ struct ProjectsView: View {
             .sheet(isPresented: $showingAdd) { AddProjectView() }
             .task {
                 if services.eventKit.hasFullAccess { refresh() }
+                if let projectId = navigationRouter.pendingProjectId {
+                    openRoutedProject(projectId)
+                }
+            }
+            .onChange(of: navigationRouter.pendingProjectId) { _, projectId in
+                if let projectId {
+                    openRoutedProject(projectId)
+                }
             }
         }
     }
@@ -92,9 +109,7 @@ struct ProjectsView: View {
                 if !items.isEmpty {
                     Section(status.title) {
                         ForEach(items) { project in
-                            NavigationLink {
-                                ProjectDashboardView(project: project)
-                            } label: {
+                            NavigationLink(value: project.id) {
                                 VStack(alignment: .leading, spacing: 6) {
                                     ProjectCard(
                                         project: project,
@@ -130,6 +145,12 @@ struct ProjectsView: View {
                 message = error.localizedDescription
             }
         }
+    }
+
+    private func openRoutedProject(_ projectId: UUID) {
+        guard projects.contains(where: { $0.id == projectId }) else { return }
+        navigationPath = [projectId]
+        navigationRouter.pendingProjectId = nil
     }
 }
 

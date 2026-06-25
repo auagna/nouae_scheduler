@@ -4,55 +4,66 @@ import SwiftData
 @MainActor
 final class RawTaskStore {
     private let context: ModelContext
-    init(context: ModelContext) { self.context = context }
 
-    func createRawTask(title: String, projectId: UUID? = nil, syncState: SyncState = .local) throws -> RawTask {
-        let task = RawTask(title: title.trimmingCharacters(in: .whitespacesAndNewlines), projectId: projectId, syncState: syncState)
+    init(context: ModelContext) {
+        self.context = context
+    }
+
+    @discardableResult
+    func createRawTask(title: String, projectId: UUID? = nil, scheduledAt: Date? = nil, syncState: SyncState = .local) throws -> RawTask {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { throw SyncError.invalidTitle }
+        let task = RawTask(title: trimmedTitle, projectId: projectId, scheduledAt: scheduledAt, syncState: syncState)
         context.insert(task)
         try context.save()
         return task
     }
 
+    @discardableResult
     func upsertImportedReminder(title: String, reminderIdentifier: String, scheduledAt: Date?) throws -> RawTask {
-        if let task = try findByReminderIdentifier(reminderIdentifier) {
-            task.title = title
-            task.scheduledAt = scheduledAt
-            task.syncState = .synced
+        if let existing = try context.fetch(FetchDescriptor<RawTask>()).first(where: { $0.reminderIdentifier == reminderIdentifier }) {
+            existing.title = title
+            existing.scheduledAt = scheduledAt
+            existing.syncState = .synced
             try context.save()
-            return task
+            return existing
         }
-        let task = RawTask(title: title, reminderIdentifier: reminderIdentifier, scheduledAt: scheduledAt, syncState: .synced)
+
+        let task = RawTask(
+            title: title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "제목 없음" : title,
+            reminderIdentifier: reminderIdentifier,
+            scheduledAt: scheduledAt,
+            syncState: .synced
+        )
         context.insert(task)
         try context.save()
         return task
     }
 
-    func findByReminderIdentifier(_ identifier: String) throws -> RawTask? {
-        try context.fetch(FetchDescriptor<RawTask>()).first { $0.reminderIdentifier == identifier }
+    func assignProject(task: RawTask, projectId: UUID?) throws {
+        task.projectId = projectId
+        task.syncState = .pending
+        try context.save()
     }
 
-    func markConverted(_ task: RawTask, scheduledAt: Date) throws {
+    func markConverted(task: RawTask, scheduledAt: Date?) throws {
         task.isConvertedToBlock = true
         task.scheduledAt = scheduledAt
+        task.syncState = .pending
         try context.save()
     }
 
-    func isVisibleInInbox(_ task: RawTask, on date: Date = Date()) -> Bool {
-        guard !task.isConvertedToBlock else { return false }
-        guard let scheduledAt = task.scheduledAt else { return true }
-        let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: date)) ?? date
-        return scheduledAt < endOfDay
+    func isVisibleInInbox(_ task: RawTask) -> Bool {
+        !task.isConvertedToBlock
     }
 
-    func fetchInboxTasks(on date: Date = Date()) throws -> [RawTask] {
-        try context.fetch(FetchDescriptor<RawTask>()).filter { isVisibleInInbox($0, on: date) }
+    func fetchInboxTasks() throws -> [RawTask] {
+        try context.fetch(FetchDescriptor<RawTask>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)]))
+            .filter { isVisibleInInbox($0) }
     }
 
     func fetchTasksByProject(projectId: UUID) throws -> [RawTask] {
-        try context.fetch(FetchDescriptor<RawTask>()).filter { $0.projectId == projectId }
-    }
-
-    func fetchUnconvertedTasksByProject(projectId: UUID) throws -> [RawTask] {
-        try fetchTasksByProject(projectId: projectId).filter { isVisibleInInbox($0) }
+        try context.fetch(FetchDescriptor<RawTask>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)]))
+            .filter { $0.projectId == projectId }
     }
 }

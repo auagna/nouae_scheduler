@@ -12,3 +12,12 @@ struct DashboardMetric: Identifiable {
     let title: String
     let value: String
 }
+
+struct DashboardSnapshot {
+    var planned: Int
+    var inProgress: Int
+    var completed: Int
+    var delayedToday: Int
+
+    static let empty = DashboardSnapshot(planned: 0, inProgress: 0, completed: 0, delayedToday: 0)
+}
