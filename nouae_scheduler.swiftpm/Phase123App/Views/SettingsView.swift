@@ -6,14 +6,12 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var services: AppServices
-    @EnvironmentObject private var stores: AppStores
 
     @Query(sort: \AppSyncSettings.updatedAt, order: .reverse) private var syncSettings: [AppSyncSettings]
     @Query(sort: \ProjectArea.updatedAt, order: .reverse) private var areas: [ProjectArea]
     @Query(sort: \Project.updatedAt, order: .reverse) private var projects: [Project]
     @Query(sort: \RawTask.createdAt, order: .reverse) private var tasks: [RawTask]
     @Query(sort: \WorkBlock.updatedAt, order: .reverse) private var blocks: [WorkBlock]
-    @Query(sort: \ModuleInstance.updatedAt, order: .reverse) private var moduleInstances: [ModuleInstance]
 
     @State private var isWorking = false
     @State private var message: String?
@@ -70,16 +68,8 @@ struct SettingsView: View {
 
                 PlanSettingsSection()
 
-                ShortcutsAutomationSection(moduleCount: shortcutCandidateModuleCount) {
-                    refreshShortcutParameters()
-                }
-
-                ModuleManagerView()
-
-                ModuleHostView(placement: .settingsSection, layoutStyle: .compact)
-
                 DataSettingsSection(
-                    onExport: { message = "Export는 다음 단계에서 파일 생성 흐름으로 연결합니다." },
+                    onExport: { message = "Export는 MVP 안정화 이후 파일 생성 흐름으로 다시 연결합니다." },
                     onRemoveSamples: { showingSampleRemoval = true }
                 )
             }
@@ -99,11 +89,6 @@ struct SettingsView: View {
     private var failedBlocks: [WorkBlock] { blocks.filter { $0.syncState == .failed } }
     private var failedTasks: [RawTask] { tasks.filter { $0.syncState == .failed } }
     private var failedProjects: [Project] { projects.filter { $0.syncState == .failed } }
-    private var shortcutCandidateModuleCount: Int {
-        moduleInstances.filter { instance in
-            instance.archivedAt == nil && instance.isEnabled
-        }.count
-    }
 
     private func requestCalendarPermission() async {
         await run {
@@ -163,10 +148,6 @@ struct SettingsView: View {
     private func openSystemSettings() {
         guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
         UIApplication.shared.open(url)
-    }
-
-    private func refreshShortcutParameters() {
-        message = "Swift Playgrounds 빌드에서는 Shortcuts 노출을 비활성화했습니다. Core 앱 기능은 그대로 사용할 수 있습니다."
     }
 
     private func run(_ operation: @escaping () async throws -> Void) async {
