@@ -79,6 +79,7 @@ final class ModuleBuilderStore {
     }
 }
 
+@MainActor
 struct ModuleBuilderValidator {
     func validate(_ draft: ModuleBuilderDraft, registry: ModuleRegistry) -> ModuleValidationResult {
         var errors: [String] = []
