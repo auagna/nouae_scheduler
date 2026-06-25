@@ -15,10 +15,12 @@ final class AppStores: ObservableObject {
     let dashboardStore: DashboardStore
     let moduleRegistry: ModuleRegistry
     let moduleBuilderStore: ModuleBuilderStore
+    let modulePackStore: ModulePackStore
 
     init(context: ModelContext) {
         moduleRegistry = ModuleRegistry()
         moduleBuilderStore = ModuleBuilderStore(context: context)
+        modulePackStore = ModulePackStore(context: context)
         projectAreaStore = ProjectAreaStore(context: context)
         routineStore = RoutineStore(context: context)
         projectStore = ProjectStore(context: context)

@@ -5,6 +5,7 @@ private enum ModuleManagerTab: String, CaseIterable, Identifiable {
     case installed = "Installed"
     case available = "Available"
     case create = "Create"
+    case packs = "Packs"
     case importPack = "Import"
 
     var id: String { rawValue }
@@ -46,6 +47,8 @@ struct ModuleManagerView: View {
                     availableView
                 case .create:
                     createView
+                case .packs:
+                    ModulePackManagerView()
                 case .importPack:
                     importView
                 }

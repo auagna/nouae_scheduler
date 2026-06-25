@@ -15,7 +15,8 @@ enum AppModelContainer {
             NextAdjustment.self,
             ModuleInstance.self,
             ModulePermissionGrant.self,
-            ModuleDraftRecord.self
+            ModuleDraftRecord.self,
+            ModulePackRecord.self
         ])
     }
 
