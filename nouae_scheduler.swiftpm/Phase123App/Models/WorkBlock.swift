@@ -3,27 +3,27 @@ import SwiftData
 
 @Model
 final class WorkBlock {
-    @Attribute(.unique) var id: UUID
-    var title: String
+    @Attribute(.unique) var id: UUID = UUID()
+    var title: String = ""
     var projectId: UUID?
     var rawTaskId: UUID?
-    var startAt: Date
-    var endAt: Date
-    var executionStateRawValue: String
-    var progress: Double
+    var startAt: Date = Date()
+    var endAt: Date = Date().addingTimeInterval(600)
+    var executionStateRawValue: String = WorkBlockState.planned.rawValue
+    var progress: Double = 0
     var eventIdentifier: String?
     var calendarIdentifier: String?
     var reminderIdentifier: String?
     var reminderListIdentifier: String?
-    var shouldCreateReminder: Bool
+    var shouldCreateReminder: Bool = false
     var reminderDueAt: Date?
-    var reminderNotes: String
-    var memo: String
-    var createdAt: Date
-    var updatedAt: Date
-    var syncStateRawValue: String
-    var calendarSyncStateRawValue: String
-    var reminderSyncStateRawValue: String
+    var reminderNotes: String = ""
+    var memo: String = ""
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
+    var syncStateRawValue: String = SyncState.local.rawValue
+    var calendarSyncStateRawValue: String = SyncState.local.rawValue
+    var reminderSyncStateRawValue: String = SyncState.local.rawValue
 
     init(
         id: UUID = UUID(),
