@@ -3,15 +3,15 @@ import SwiftData
 
 @Model
 final class ProjectMemoSection {
-    @Attribute(.unique) var id: UUID
-    var projectId: UUID
-    var sectionTypeRawValue: String
-    var title: String
-    var content: String
-    var order: Int
-    var isGenerated: Bool
-    var createdAt: Date
-    var updatedAt: Date
+    @Attribute(.unique) var id: UUID = UUID()
+    var projectId: UUID = UUID()
+    var sectionTypeRawValue: String = ProjectSectionType.memo.rawValue
+    var title: String = ""
+    var content: String = ""
+    var order: Int = 0
+    var isGenerated: Bool = true
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
 
     init(
         id: UUID = UUID(),
