@@ -1,15 +1,10 @@
 import SwiftUI
 
 struct ContentView: View {
-    @AppStorage("nouae.onboarding.completed") private var hasCompletedOnboarding = false
     @EnvironmentObject private var navigationRouter: AppNavigationRouter
 
     var body: some View {
-        if hasCompletedOnboarding {
-            mainTabs
-        } else {
-            OnboardingView()
-        }
+        mainTabs
     }
 
     private var mainTabs: some View {
