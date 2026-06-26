@@ -9,10 +9,10 @@ let package = Package(
         .iOSApplication(
             name: "nou ae",
             targets: ["AppModule"],
-            bundleIdentifier: "com.auagna.nouae-scheduler.phase123",
+            bundleIdentifier: "com.auagna.nouae-scheduler.stable",
             teamIdentifier: "",
             displayVersion: "1.0",
-            bundleVersion: "55",
+            bundleVersion: "56",
             appIcon: .placeholder(icon: .calendar),
             accentColor: .presetColor(.blue),
             supportedDeviceFamilies: [.pad, .phone],
@@ -23,15 +23,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "AppModule",
-            path: "Phase123App",
-            exclude: [
-                "Support/AppIntentActions.swift",
-                "Support/AppIntentEntities.swift",
-                "Components/Settings/ShortcutsAutomationSection.swift",
-                "Views/PromptExportView.swift",
-                "Services/PromptBuilderService.swift",
-                "Components/PromptPreviewCard.swift"
-            ]
+            path: "StableApp"
         )
     ]
 )
